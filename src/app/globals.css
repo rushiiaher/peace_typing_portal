@@ -12,15 +12,30 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+@font-face {
+  font-family: 'Kruti Dev 010';
+  src: url('/fonts/Kruti_Dev_010.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+.marathi-input input,
+.marathi-input textarea,
+.marathi-input .MuiInputBase-input {
+  font-family: 'Kruti Dev 010', Arial, sans-serif !important;
+  font-size: 24px !important;
+  line-height: 1.5 !important;
+}
+
+.marathi-text {
+  font-family: 'Kruti Dev 010', Arial, sans-serif !important;
+  font-size: 20px !important;
 }
