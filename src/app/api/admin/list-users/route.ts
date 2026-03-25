@@ -29,6 +29,7 @@ export async function GET() {
                 name,
                 email,
                 phone,
+                institute_id,
                 is_active,
                 created_at,
                 institutes ( id, name )
@@ -67,7 +68,7 @@ export async function GET() {
             email: r.email ?? '',
             phone: r.phone ?? '',
             role: 'institute_admin',
-            institute_id: r.institutes?.id ?? '',
+            institute_id: r.institute_id ?? r.institutes?.id ?? '',
             institute_name: r.institutes?.name ?? '',
             enrollment_number: '',
             batch_name: '',

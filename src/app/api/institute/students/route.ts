@@ -53,9 +53,10 @@ export async function GET() {
         const { data, error } = await admin
             .from('students')
             .select(`
-                id, enrollment_number, name, first_name, surname,
+                id, enrollment_number, name, first_name, father_name, surname,
                 email, phone, address, is_active, created_at,
-                photo_url, aadhar_card_no, mother_name, date_of_birth, blood_group,
+                photo_url, aadhar_card_no, mother_name, guardian_name, guardian_phone,
+                date_of_birth, blood_group,
                 batch_id,
                 batches ( id, batch_name, batch_code, courses ( id, name ) )
             `)
@@ -69,11 +70,14 @@ export async function GET() {
             enrollment_number: s.enrollment_number,
             name: s.name,
             first_name: s.first_name ?? '',
+            father_name: s.father_name ?? '',
             surname: s.surname ?? '',
             email: s.email,
             phone: s.phone ?? '',
             address: s.address ?? '',
             mother_name: s.mother_name ?? '',
+            guardian_name: s.guardian_name ?? '',
+            guardian_phone: s.guardian_phone ?? '',
             aadhar_card_no: s.aadhar_card_no ?? '',
             photo_url: s.photo_url ?? null,
             date_of_birth: s.date_of_birth ?? '',

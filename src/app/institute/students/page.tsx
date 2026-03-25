@@ -19,10 +19,11 @@ import { instituteAdminMenuItems } from '../../components/menuItems';
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 interface Student {
   id: string; enrollment_number: string; name: string;
-  first_name: string; surname: string; email: string; phone: string;
+  first_name: string; father_name: string; surname: string; email: string; phone: string;
   address: string; batch_id: string; batch_name: string; batch_code: string;
   course_id: string; course_name: string; is_active: boolean; created_at: string;
   photo_url: string | null; aadhar_card_no: string; mother_name: string;
+  guardian_name: string; guardian_phone: string;
   date_of_birth: string; blood_group: string;
 }
 interface Course { id: string; name: string; code: string; }
@@ -181,7 +182,7 @@ export default function StudentsPage() {
     setEditPhotoFile(null);
     setEditForm({
       first_name: row.first_name || row.name.split(' ')[0] || '',
-      father_name: '',
+      father_name: row.father_name || '',
       surname: row.surname || row.name.split(' ').slice(-1)[0] || '',
       phone: row.phone, address: row.address,
       is_active: row.is_active ? 'true' : 'false',
@@ -190,7 +191,8 @@ export default function StudentsPage() {
       blood_group: row.blood_group || '',
       date_of_birth: row.date_of_birth || '',
       mother_name: row.mother_name || '',
-      guardian_name: '', guardian_phone: '',
+      guardian_name: row.guardian_name || '',
+      guardian_phone: row.guardian_phone || '',
       course_id: row.course_id || '',
       batch_id: row.batch_id || '',
       photo_url: row.photo_url || '',

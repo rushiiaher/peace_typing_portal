@@ -48,22 +48,23 @@ export async function POST(request: NextRequest) {
 
         const newUserId = authData.user.id;
 
-        // ── Step 2: Insert into institute_admins table ──
+        // ── Step 2: Upsert into institute_admins table ──
+        // Using upsert to handle any DB trigger that may have pre-created the row
         const { error: adminError } = await supabaseAdmin
             .from('institute_admins')
-            .insert({
+            .upsert({
                 id: newUserId,
                 institute_id,
                 name: full_name,
                 email,
                 phone: phone || null,
                 is_active: true,
-            });
+            }, { onConflict: 'id' });
 
         if (adminError) {
             // Roll back auth user to avoid orphans
             await supabaseAdmin.auth.admin.deleteUser(newUserId);
-            return NextResponse.json({ error: `institute_admins insert failed: ${adminError.message}` }, { status: 500 });
+            return NextResponse.json({ error: `institute_admins upsert failed: ${adminError.message}` }, { status: 500 });
         }
 
         // ── Step 3: Also update profiles.institute_id if profiles row exists ──
