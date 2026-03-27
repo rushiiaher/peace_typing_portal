@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
             email,
             phone: phone || null,
             address: address || null,
-            is_active: false,   // student cannot login until exam fee is paid to super admin
+            is_active: is_active ?? true,
             aadhar_card_no: aadhar_card_no || null,
             blood_group: blood_group || null,
             date_of_birth: date_of_birth || null,

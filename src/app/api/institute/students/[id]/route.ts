@@ -42,42 +42,49 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const body = await request.json();
-        const {
-            name, phone, address, batch_id, is_active, password,
-            first_name, father_name, surname, mother_name,
-            aadhar_card_no, date_of_birth, blood_group,
-            guardian_name, guardian_phone, photo_url,
-        } = body;
-
         const admin = await getAdminClient();
 
-        // Update auth metadata (and optionally password)
-        const authPayload: any = { user_metadata: { full_name: name, phone: phone || null } };
-        if (password && password.length >= 8) authPayload.password = password;
-        const { error: authError } = await admin.auth.admin.updateUserById(id, authPayload);
-        if (authError) throw authError;
+        // Build update object containing ONLY the fields actually sent in the request.
+        // This prevents wiping data when a partial update (e.g. only photo_url) is sent.
+        const fieldMap: Record<string, (v: any) => any> = {
+            name:           (v: any) => v,
+            first_name:     (v: any) => v || null,
+            father_name:    (v: any) => v || null,
+            surname:        (v: any) => v || null,
+            mother_name:    (v: any) => v || null,
+            phone:          (v: any) => v || null,
+            address:        (v: any) => v || null,
+            batch_id:       (v: any) => v || null,
+            is_active:      (v: any) => v,
+            photo_url:      (v: any) => v ?? null,
+            aadhar_card_no: (v: any) => v || null,
+            date_of_birth:  (v: any) => v || null,
+            blood_group:    (v: any) => v || null,
+            guardian_name:  (v: any) => v || null,
+            guardian_phone:  (v: any) => v || null,
+        };
+
+        const updateData: Record<string, any> = { updated_at: new Date().toISOString() };
+        for (const [key, transform] of Object.entries(fieldMap)) {
+            if (key in body) {
+                updateData[key] = transform(body[key]);
+            }
+        }
+
+        // Update auth metadata only if relevant fields are being changed
+        if ('name' in body || 'phone' in body || 'password' in body) {
+            const authPayload: any = { user_metadata: {} };
+            if ('name' in body) authPayload.user_metadata.full_name = body.name;
+            if ('phone' in body) authPayload.user_metadata.phone = body.phone || null;
+            if (body.password && body.password.length >= 6) authPayload.password = body.password;
+            const { error: authError } = await admin.auth.admin.updateUserById(id, authPayload);
+            if (authError) throw authError;
+        }
 
         // Update students table
         const { data, error } = await admin
             .from('students')
-            .update({
-                name,
-                first_name: first_name || null,
-                father_name: father_name || null,
-                surname: surname || null,
-                mother_name: mother_name || null,
-                phone: phone || null,
-                address: address || null,
-                batch_id: batch_id || null,
-                is_active,
-                photo_url: photo_url ?? null,
-                aadhar_card_no: aadhar_card_no || null,
-                date_of_birth: date_of_birth || null,
-                blood_group: blood_group || null,
-                guardian_name: guardian_name || null,
-                guardian_phone: guardian_phone || null,
-                updated_at: new Date().toISOString()
-            })
+            .update(updateData)
             .eq('id', id)
             .select().single();
 
