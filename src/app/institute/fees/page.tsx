@@ -7,7 +7,8 @@ import {
   Skeleton, InputAdornment, Card, CardContent, Grid, Table, TableHead,
   TableRow, TableCell, TableBody, TableContainer, LinearProgress,
 } from '@mui/material';
-import { Payment, Search, Refresh, CheckCircle, HourglassEmpty, Warning } from '@mui/icons-material';
+import { Payment, Search, Refresh, CheckCircle, HourglassEmpty, Warning, Print, Receipt } from '@mui/icons-material';
+import { generateFeeReceiptHtml, ReceiptData } from '../../../utils/generateFeeReceiptHtml';
 import AdminLayout from '../../components/AdminLayout';
 import { instituteAdminMenuItems } from '../../components/menuItems';
 
@@ -81,6 +82,48 @@ export default function FeeCollectionPage() {
     setDialogOpen(true);
   };
 
+  /* ── Print receipt for a student ── */
+  const printReceipt = async (studentId: string) => {
+    try {
+      const res = await fetch(`/api/institute/fee-collection/receipt?student_id=${studentId}`);
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || 'Failed to fetch receipt data');
+      const r = j.receipt;
+      if (!r.payments?.length) { showSnackbar('No payments recorded yet for this student.', 'error'); return; }
+      // Build receipt for the latest payment
+      const latestPayment = r.payments[r.payments.length - 1];
+      const receiptData: ReceiptData = {
+        receiptNo: latestPayment.receiptNo || genReceiptNo(),
+        receiptDate: latestPayment.date,
+        studentName: r.studentName,
+        rollNo: r.rollNo,
+        courseName: r.courseName,
+        courseCode: r.courseCode,
+        batchName: r.batchName,
+        admissionMonth: r.admissionMonth,
+        courseDuration: r.courseDuration,
+        paymentMode: latestPayment.paymentMode,
+        paymentDate: latestPayment.date,
+        currentAmount: latestPayment.amount,
+        installments: r.payments.map((p: any) => ({ label: p.label, amount: p.amount })),
+        totalFee: r.totalFee,
+        totalPaid: r.totalPaid,
+        balance: r.balance,
+        instituteName: r.instituteName,
+        instituteAddress: r.instituteAddress,
+        institutePhone: r.institutePhone,
+        instituteEmail: r.instituteEmail,
+      };
+      const html = generateFeeReceiptHtml(receiptData);
+      const win = window.open('', '_blank');
+      if (!win) { alert('Pop-up blocked! Please allow pop-ups.'); return; }
+      win.document.write(html);
+      win.document.close();
+    } catch (e: any) {
+      showSnackbar('Receipt error: ' + e.message, 'error');
+    }
+  };
+
   const handleCollect = async () => {
     if (!selected) return;
     const amount = Number(form.amount_collected);
@@ -104,6 +147,8 @@ export default function FeeCollectionPage() {
       if (!res.ok) throw new Error(json.error);
       showSnackbar(`${ordinal(selected.payment_count + 1)} installment collected from ${selected.name}.`, 'success');
       setDialogOpen(false); fetchStudents();
+      // Auto-print receipt after successful collection
+      setTimeout(() => printReceipt(selected.id), 500);
     } catch (e: any) { showSnackbar(e.message, 'error'); }
     finally { setSaving(false); }
   };
@@ -214,15 +259,32 @@ export default function FeeCollectionPage() {
                         />
                       </TableCell>
                       <TableCell align="right">
-                        <Button
-                          size="small"
-                          variant={row.fee_status === 'paid' ? 'outlined' : 'contained'}
-                          startIcon={<Payment />}
-                          onClick={() => openDialog(row)}
-                          color={row.fee_status === 'paid' ? 'success' : 'primary'}
-                        >
-                          {row.fee_status === 'paid' ? 'Receipt' : 'Collect'}
-                        </Button>
+                        <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                          {row.fee_status !== 'paid' && (
+                            <Button
+                              size="small"
+                              variant="contained"
+                              startIcon={<Payment />}
+                              onClick={() => openDialog(row)}
+                            >
+                              Collect
+                            </Button>
+                          )}
+                          {row.payment_count > 0 && (
+                            <Tooltip title="Print Fee Receipt">
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                color="success"
+                                startIcon={<Print />}
+                                onClick={() => printReceipt(row.id)}
+                                sx={{ minWidth: 0 }}
+                              >
+                                Receipt
+                              </Button>
+                            </Tooltip>
+                          )}
+                        </Stack>
                       </TableCell>
                     </TableRow>
                   ))}

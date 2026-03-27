@@ -104,15 +104,61 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const admin = await getAdminClient();
-        // Delete student first (FK might exist, but usually students table is the child of auth.users)
-        // Wait, students table is REFERENCES auth.users(id).
-        // If we delete auth user first, it might fail or delete student via CASCADE.
-        // Better delete from students first.
+
+        // Verify institute admin owns this student
+        const { data: instAdmin } = await admin
+            .from('institute_admins')
+            .select('institute_id')
+            .eq('id', user.id)
+            .single();
+        if (!instAdmin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+        const { data: stu } = await admin
+            .from('students')
+            .select('id')
+            .eq('id', id)
+            .eq('institute_id', instAdmin.institute_id)
+            .single();
+        if (!stu) return NextResponse.json({ error: 'Student not found in your institute.' }, { status: 404 });
+
+        // Delete all child table rows BEFORE deleting the student
+        // (handles case where ON DELETE CASCADE is not yet applied)
+        const childTables = [
+            'exam_question_assignments',  // via exams.id → exam_question_assignments.exam_id
+            'exam_reschedule_requests',
+            'exam_applications',
+            'exams',
+            'student_practice_sessions',
+            'student_fee_transactions',
+            'student_fee_collection',
+            'student_enrollments',
+        ];
+
+        // For exam_question_assignments, delete via exam IDs first
+        const { data: examRows } = await admin
+            .from('exams')
+            .select('id')
+            .eq('student_id', id);
+        const examIds = (examRows ?? []).map((e: any) => e.id);
+        if (examIds.length > 0) {
+            await admin.from('exam_question_assignments').delete().in('exam_id', examIds);
+        }
+
+        // Delete from all direct child tables
+        for (const table of childTables) {
+            await admin.from(table).delete().eq('student_id', id);
+        }
+
+        // Now delete the student row
         const { error: studentError } = await admin.from('students').delete().eq('id', id);
         if (studentError) throw studentError;
 
+        // Finally delete the auth user
         const { error: authError } = await admin.auth.admin.deleteUser(id);
-        if (authError) throw authError;
+        if (authError) {
+            // Non-fatal: student row is gone but auth user cleanup failed
+            console.error('Auth user deletion failed:', authError.message);
+        }
 
         return NextResponse.json({ message: 'Student deleted.' });
     } catch (err: any) {
