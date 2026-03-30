@@ -25,6 +25,7 @@ interface ExamRow {
 }
 interface Batch { id: string; batch_name: string; batch_code: string; course_id: string; course_name?: string; }
 interface Student { id: string; name: string; enrollment_number: string; has_photo: boolean; exam_fee_paid: boolean; is_eligible: boolean; already_scheduled: boolean; }
+interface SystemItem { id: string; system_name: string; }
 
 export default function ExamsPage() {
   const [tab, setTab] = useState(0);
@@ -34,6 +35,7 @@ export default function ExamsPage() {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [batches, setBatches] = useState<Batch[]>([]);
+  const [systems, setSystems] = useState<SystemItem[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [stuLoading, setStuLoading] = useState(false);
 
@@ -58,8 +60,12 @@ export default function ExamsPage() {
   }, []);
 
   const fetchBasics = async () => {
-    const res = await fetch('/api/institute/batches');
-    if (res.ok) setBatches((await res.json()).batches ?? []);
+    const [bRes, sRes] = await Promise.all([
+      fetch('/api/institute/batches'),
+      fetch('/api/institute/systems'),
+    ]);
+    if (bRes.ok) setBatches((await bRes.json()).batches ?? []);
+    if (sRes.ok) setSystems((await sRes.json()).systems ?? []);
   };
 
   useEffect(() => { fetchExams(); fetchBasics(); }, [fetchExams]);
@@ -96,7 +102,7 @@ export default function ExamsPage() {
         }),
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(j.error || 'Failed to schedule');
+      if (!res.ok) throw new Error(j.message || j.error || 'Failed to schedule');
       setScheduleSuccess(j.message || `Scheduled ${selectedStudents.length} exams.`);
       setOpen(false);
       fetchExams();
@@ -300,6 +306,25 @@ export default function ExamsPage() {
                   {filteredBatches.map(b => <MenuItem key={b.id} value={b.id}>{b.batch_name} ({b.batch_code})</MenuItem>)}
                 </TextField>
 
+                {/* No systems warning */}
+                {systems.length === 0 && (
+                  <Alert severity="warning" sx={{ borderRadius: 2 }}
+                    action={
+                      <Button size="small" color="inherit" href="/institute/settings" target="_blank">
+                        Add Systems
+                      </Button>
+                    }
+                  >
+                    <strong>No exam systems configured.</strong> Go to Settings → Systems and add your exam computers before scheduling.
+                  </Alert>
+                )}
+
+                {systems.length > 0 && (
+                  <Alert severity="success" icon={<Computer fontSize="small" />} sx={{ py: 0.5, borderRadius: 2 }}>
+                    {systems.length} system{systems.length !== 1 ? 's' : ''} available for allocation.
+                  </Alert>
+                )}
+
                 {/* Fixed Exam Pattern Info */}
                 <Paper variant="outlined" sx={{ p: 2, bgcolor: 'primary.50', borderRadius: 2 }}>
                   <Typography variant="caption" fontWeight={700} color="primary.main" sx={{ display: 'block', mb: 1 }}>
@@ -424,7 +449,7 @@ export default function ExamsPage() {
           <Button
             variant="contained" size="large"
             onClick={handleSchedule}
-            disabled={saving || selectedStudents.length === 0 || !examDate}
+            disabled={saving || selectedStudents.length === 0 || !examDate || systems.length === 0}
             startIcon={saving ? <CircularProgress size={20} /> : <CheckCircle />}
           >
             {saving ? 'Validating…' : `Schedule for ${selectedStudents.length} Student${selectedStudents.length !== 1 ? 's' : ''}`}

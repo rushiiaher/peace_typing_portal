@@ -4,11 +4,11 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
     Box, Paper, Typography, Button, CircularProgress,
-    Alert, Stepper, Step, StepLabel, Stack, Chip,
+    Alert, Stepper, Step, StepLabel, Stack, Chip, Divider,
 } from '@mui/material';
 import {
     QuestionAnswer, Email, Description, TableChart, Speed, CheckCircle,
-    AccessTime, School, PlayArrow,
+    AccessTime, School, PlayArrow, HowToReg, Block,
 } from '@mui/icons-material';
 import ExamMCQEmail from '../../../../../components/exam/ExamMCQEmail';
 import ExamLetterStatement from '../../../../../components/exam/ExamLetterStatement';
@@ -180,13 +180,34 @@ export default function ExamSession() {
                             </Stack>
                         </Paper>
 
-                        <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
-                            <Button variant="outlined" size="large" onClick={() => router.back()}>Go Back</Button>
-                            <Button variant="contained" size="large" startIcon={starting ? <CircularProgress size={20} color="inherit" /> : <PlayArrow />}
-                                onClick={startExam} disabled={starting} sx={{ px: 5 }}>
-                                {starting ? 'Starting…' : 'Start Exam'}
-                            </Button>
-                        </Box>
+                        {/* Attendance Gate */}
+                        {exam?.attendance_status === 'present' ? (
+                            <Box>
+                                <Alert severity="success" icon={<HowToReg />} sx={{ mb: 2, borderRadius: 2 }}>
+                                    Attendance marked — you are cleared to start.
+                                </Alert>
+                                <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+                                    <Button variant="outlined" size="large" onClick={() => router.back()}>Go Back</Button>
+                                    <Button variant="contained" size="large" startIcon={starting ? <CircularProgress size={20} color="inherit" /> : <PlayArrow />}
+                                        onClick={startExam} disabled={starting} sx={{ px: 5 }}>
+                                        {starting ? 'Starting…' : 'Start Exam'}
+                                    </Button>
+                                </Box>
+                            </Box>
+                        ) : (
+                            <Box>
+                                <Alert severity="error" icon={<Block />} sx={{ mb: 2, borderRadius: 2 }}>
+                                    <strong>Attendance not marked.</strong> Your institute must mark you as <em>Present</em> before you can start the exam.
+                                    Please report to the exam hall and contact your invigilator.
+                                </Alert>
+                                <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+                                    <Button variant="outlined" size="large" onClick={() => router.back()}>Go Back</Button>
+                                    <Button variant="contained" size="large" disabled startIcon={<Block />} sx={{ px: 5 }}>
+                                        Waiting for Attendance
+                                    </Button>
+                                </Box>
+                            </Box>
+                        )}
                     </Box>
                 </Paper>
             </Box>

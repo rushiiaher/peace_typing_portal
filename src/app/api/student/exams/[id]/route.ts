@@ -89,13 +89,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const admin = getAdmin();
+
+        // Guard: attendance must be marked present before exam can start
+        if (status === 'in_progress') {
+            const { data: currentExam } = await admin
+                .from('exams')
+                .select('attendance_status')
+                .eq('id', id)
+                .eq('student_id', user.id)
+                .single();
+
+            if (!currentExam || currentExam.attendance_status !== 'present') {
+                return NextResponse.json({
+                    error: 'Your attendance has not been marked as Present. Please contact your institute before starting the exam.'
+                }, { status: 403 });
+            }
+        }
+
         const { data, error } = await admin
             .from('exams')
             .update({
                 status,
                 ...(status === 'completed' && {
                     end_time: new Date().toISOString(),
-                    // In a real app, you'd calculate the final result here based on sections
                     result: 'pass',
                     total_marks_obtained: results?.totalMarks || 0
                 }),
