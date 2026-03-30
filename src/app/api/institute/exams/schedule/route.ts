@@ -56,10 +56,10 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Exams must be scheduled at least 6 days in advance.' }, { status: 400 });
         }
 
-        // 2. Working Day Check
+        // 2. Working Day Check — skip if working_days not configured for this institute
         const dayName = format(proposedDate, 'EEEE');
         const workingDays = (institute.working_days as string[]) || [];
-        if (!workingDays.includes(dayName)) {
+        if (workingDays.length > 0 && !workingDays.includes(dayName)) {
             return NextResponse.json({ error: `The selected date (${dayName}) is a non-working day for this institute.` }, { status: 400 });
         }
 
@@ -98,43 +98,46 @@ export async function POST(req: NextRequest) {
         const endDateTime = addMinutes(startDateTime, totalDuration);
         const windowEndDateTime = addMinutes(startDateTime, windowDuration);
 
+        // 4. Operational Hours Check — skip if not configured for this institute
         const startStr = format(startDateTime, 'HH:mm:ss');
         const endStr = format(endDateTime, 'HH:mm:ss');
 
-        if (startStr < institute.opening_time || endStr > institute.closing_time) {
-            return NextResponse.json({ error: `Exam time (${startStr} - ${endStr}) must be within operational hours (${institute.opening_time} - ${institute.closing_time}).` }, { status: 400 });
+        if (institute.opening_time && institute.closing_time) {
+            if (startStr < institute.opening_time || endStr > institute.closing_time) {
+                return NextResponse.json({ error: `Exam time (${startStr} - ${endStr}) must be within operational hours (${institute.opening_time} - ${institute.closing_time}).` }, { status: 400 });
+            }
         }
 
         // --- PHASE 2: HARDWARE CONFLICT CHECK ---
 
         const { data: systemsData } = await admin.from('institute_systems').select('*').eq('institute_id', instituteId);
         const systems = systemsData as any[] || [];
-        if (systems.length === 0) {
-            return NextResponse.json({ error: 'No exam systems/terminals configured for this institute.' }, { status: 400 });
-        }
 
-        const { data: existingExams } = await admin
-            .from('exams')
-            .select('id, system_id, start_time, end_time')
-            .eq('status', 'scheduled')
-            .not('status', 'eq', 'cancelled')
-            .filter('start_time', 'gte', `${examDate}T00:00:00Z`)
-            .filter('start_time', 'lte', `${examDate}T23:59:59Z`);
+        // Only do system conflict check if systems are configured
+        let availableSystems: any[] = systems;
+        if (systems.length > 0) {
+            const { data: existingExams } = await admin
+                .from('exams')
+                .select('id, system_id, start_time, end_time')
+                .eq('status', 'scheduled')
+                .filter('start_time', 'gte', `${examDate}T00:00:00Z`)
+                .filter('start_time', 'lte', `${examDate}T23:59:59Z`);
 
-        const bookedSystemIds = new Set();
-        (existingExams ?? []).forEach(ex => {
-            const exStart = new Date(ex.start_time);
-            const exEndWithBuffer = addMinutes(new Date(ex.end_time), bufferMinutes);
-            if (startDateTime < exEndWithBuffer && windowEndDateTime > exStart) {
-                if (ex.system_id) bookedSystemIds.add(ex.system_id);
+            const bookedSystemIds = new Set();
+            (existingExams ?? []).forEach(ex => {
+                const exStart = new Date(ex.start_time);
+                const exEndWithBuffer = addMinutes(new Date(ex.end_time), bufferMinutes);
+                if (startDateTime < exEndWithBuffer && windowEndDateTime > exStart) {
+                    if (ex.system_id) bookedSystemIds.add(ex.system_id);
+                }
+            });
+
+            availableSystems = systems.filter(s => !bookedSystemIds.has(s.id));
+            if (studentIds.length > availableSystems.length) {
+                return NextResponse.json({
+                    error: `Not enough systems available. Requested: ${studentIds.length}, Available: ${availableSystems.length} in this time slot.`
+                }, { status: 400 });
             }
-        });
-
-        const availableSystems = systems.filter(s => !bookedSystemIds.has(s.id));
-        if (studentIds.length > availableSystems.length) {
-            return NextResponse.json({
-                error: `Not enough systems available. Requested: ${studentIds.length}, Available: ${availableSystems.length} in this time slot.`
-            }, { status: 400 });
         }
 
         // --- PHASE 3: FINALIZATION & ALLOCATION ---
@@ -145,7 +148,7 @@ export async function POST(req: NextRequest) {
 
         for (let i = 0; i < studentIds.length; i++) {
             const studentId = studentIds[i];
-            const system = availableSystems[i];
+            const system = availableSystems[i] ?? null; // null when no systems configured yet
 
             finalExams.push({
                 student_id: studentId,
@@ -158,8 +161,8 @@ export async function POST(req: NextRequest) {
                 end_time: endDateTime.toISOString(),
                 reporting_time: reportingTime.toISOString(),
                 gate_closing_time: gateClosingTime.toISOString(),
-                system_id: system.id,
-                exam_center_code: institute.center_code || `${institute.code}-${courseId.slice(0, 4)}`.toUpperCase(),
+                system_id: system?.id ?? null,
+                exam_center_code: institute.center_code || (institute.code ? `${institute.code}-${courseId.slice(0, 4)}`.toUpperCase() : null),
             });
         }
 
