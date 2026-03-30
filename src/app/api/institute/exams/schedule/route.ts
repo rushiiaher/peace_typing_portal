@@ -65,20 +65,30 @@ export async function POST(req: NextRequest) {
 
         // 3. Auto-Resolve Exam Pattern for this Course
         // The exam pattern is fixed — one pattern per course. Fetch it automatically.
-        const { data: patternData, error: patternErr } = await admin
+        // Falls back to the system-wide fixed pattern if the DB row is not yet seeded.
+        const FIXED_PATTERN = {
+            id: null,
+            mcq_count: 25,
+            email_count: 1,
+            letter_count: 1,
+            statement_count: 1,
+            speed_passage_count: 1,
+            keyboard_lesson_count: 0,
+            duration_minutes: 50, // Section 1 (25 min) + Section 2 (25 min); Section 3 is dynamic
+            section_1_duration: 25,
+            section_2_duration: 25,
+            total_marks: 100,
+            passing_marks: 40,
+        };
+
+        const { data: patternData } = await admin
             .from('exam_patterns')
             .select('*')
             .eq('course_id', courseId)
             .eq('is_active', true)
             .single();
 
-        if (patternErr || !patternData) {
-            return NextResponse.json({
-                error: 'No active exam pattern configured for this course. Please contact the super admin.'
-            }, { status: 400 });
-        }
-
-        const pattern = patternData as any;
+        const pattern = { ...FIXED_PATTERN, ...(patternData ?? {}) } as any;
         const totalDuration = pattern.duration_minutes;
         const bufferMinutes = 30;
         const windowDuration = totalDuration + bufferMinutes;

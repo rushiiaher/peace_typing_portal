@@ -42,8 +42,8 @@ export async function GET() {
                 system_id, exam_center_code,
                 students ( name, enrollment_number ),
                 courses ( name ),
-                exam_patterns:exam_pattern_id ( pattern_name ),
-                institute_systems:system_id ( system_name, system_number )
+                exam_patterns!exam_pattern_id ( pattern_name ),
+                institute_systems!system_id ( system_name, system_number )
             `)
             .in('student_id', studentIds)
             .order('start_time', { ascending: false, nullsFirst: false });
