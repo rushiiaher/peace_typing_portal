@@ -6,7 +6,6 @@ import {
   DialogActions, TextField, MenuItem, Tabs, Tab, Divider,
   Stack, Checkbox, ListItemText, FormControl, Alert, CircularProgress,
   Tooltip, IconButton, Card, CardContent, Grid, Chip, Paper, Avatar,
-  Badge,
 } from '@mui/material';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import {
@@ -25,7 +24,6 @@ interface ExamRow {
   system_name: string; center_code: string;
 }
 interface Batch { id: string; batch_name: string; batch_code: string; course_id: string; course_name?: string; }
-interface Pattern { id: string; pattern_name: string; duration_minutes: number; course_id: string; mcq_count?: number; }
 interface Student { id: string; name: string; enrollment_number: string; has_photo: boolean; exam_fee_paid: boolean; is_eligible: boolean; already_scheduled: boolean; }
 
 export default function ExamsPage() {
@@ -36,13 +34,11 @@ export default function ExamsPage() {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [batches, setBatches] = useState<Batch[]>([]);
-  const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [stuLoading, setStuLoading] = useState(false);
 
   const [selectedCourse, setSelectedCourse] = useState('');
   const [selectedBatch, setSelectedBatch] = useState('');
-  const [selectedPattern, setSelectedPattern] = useState('');
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
   const [examDate, setExamDate] = useState('');
   const [startTime, setStartTime] = useState('10:00');
@@ -53,7 +49,6 @@ export default function ExamsPage() {
     new Map(batches.map(b => [b.course_id, { id: b.course_id, name: b.course_name }])).values()
   );
   const filteredBatches = selectedCourse ? batches.filter(b => b.course_id === selectedCourse) : [];
-  const filteredPatterns = selectedCourse ? patterns.filter(p => p.course_id === selectedCourse) : [];
 
   const fetchExams = useCallback(async () => {
     setLoading(true);
@@ -63,12 +58,8 @@ export default function ExamsPage() {
   }, []);
 
   const fetchBasics = async () => {
-    const [bRes, pRes] = await Promise.all([
-      fetch('/api/institute/batches'),
-      fetch('/api/institute/exams/patterns'),
-    ]);
-    if (bRes.ok) setBatches((await bRes.json()).batches ?? []);
-    if (pRes.ok) setPatterns((await pRes.json()).patterns ?? []);
+    const res = await fetch('/api/institute/batches');
+    if (res.ok) setBatches((await res.json()).batches ?? []);
   };
 
   useEffect(() => { fetchExams(); fetchBasics(); }, [fetchExams]);
@@ -84,16 +75,10 @@ export default function ExamsPage() {
       .finally(() => setStuLoading(false));
   }, [selectedBatch, batches]);
 
-  // Auto-select pattern if only one exists for course
-  useEffect(() => {
-    if (filteredPatterns.length === 1) setSelectedPattern(filteredPatterns[0].id);
-    else setSelectedPattern('');
-  }, [selectedCourse, filteredPatterns.length]);
-
   const handleSchedule = async () => {
     setScheduleError('');
     const batch = batches.find(b => b.id === selectedBatch);
-    if (!selectedBatch || !selectedPattern || !examDate || !startTime || selectedStudents.length === 0) {
+    if (!selectedBatch || !examDate || !startTime || selectedStudents.length === 0) {
       setScheduleError('Please complete all fields and select at least one student.');
       return;
     }
@@ -105,7 +90,6 @@ export default function ExamsPage() {
         body: JSON.stringify({
           courseId: batch?.course_id,
           batchId: selectedBatch,
-          patternId: selectedPattern,
           examDate,
           startTime,
           studentIds: selectedStudents,
@@ -116,8 +100,7 @@ export default function ExamsPage() {
       setScheduleSuccess(j.message || `Scheduled ${selectedStudents.length} exams.`);
       setOpen(false);
       fetchExams();
-      // reset
-      setSelectedCourse(''); setSelectedBatch(''); setSelectedPattern('');
+      setSelectedCourse(''); setSelectedBatch('');
       setSelectedStudents([]); setScheduleError('');
     } catch (e: any) {
       setScheduleError(e.message);
@@ -163,12 +146,9 @@ export default function ExamsPage() {
       )
     },
     {
-      field: 'course_name', headerName: 'Course / Pattern', width: 220,
+      field: 'course_name', headerName: 'Course', width: 200,
       renderCell: p => (
-        <Stack>
-          <Typography variant="body2">{p.value}</Typography>
-          <Chip label={p.row.pattern_name} size="small" variant="outlined" />
-        </Stack>
+        <Typography variant="body2">{p.value}</Typography>
       )
     },
     {
@@ -227,8 +207,6 @@ export default function ExamsPage() {
       )
     },
   ];
-
-  const selectedPatternData = patterns.find(p => p.id === selectedPattern);
 
   return (
     <AdminLayout menuItems={instituteAdminMenuItems} title="Exam Management">
@@ -322,32 +300,28 @@ export default function ExamsPage() {
                   {filteredBatches.map(b => <MenuItem key={b.id} value={b.id}>{b.batch_name} ({b.batch_code})</MenuItem>)}
                 </TextField>
 
-                {/* Exam Pattern */}
-                <TextField select label="Exam Pattern *" value={selectedPattern}
-                  onChange={e => setSelectedPattern(e.target.value)}
-                  fullWidth disabled={!selectedCourse}
-                  helperText={filteredPatterns.length === 0 && selectedCourse ? 'No pattern found for this course' : ''}>
-                  {filteredPatterns.map(p => (
-                    <MenuItem key={p.id} value={p.id}>{p.pattern_name} ({p.duration_minutes} min)</MenuItem>
-                  ))}
-                </TextField>
-
-                {/* Show pattern details */}
-                {selectedPatternData && (
-                  <Paper variant="outlined" sx={{ p: 2, bgcolor: 'primary.50', borderRadius: 2 }}>
-                    <Typography variant="caption" fontWeight={700} color="primary.main" sx={{ display: 'block', mb: 1 }}>
-                      📋 Pattern Details
-                    </Typography>
-                    <Stack direction="row" spacing={1} flexWrap="wrap">
-                      <Chip size="small" label={`${selectedPatternData.mcq_count || '?'} MCQs`} />
-                      <Chip size="small" label="1 Email" />
-                      <Chip size="small" label="1 Letter" />
-                      <Chip size="small" label="1 Statement" />
-                      <Chip size="small" label="1 Speed Passage" />
-                      <Chip size="small" label={`${selectedPatternData.duration_minutes} min total`} color="primary" />
+                {/* Fixed Exam Pattern Info */}
+                <Paper variant="outlined" sx={{ p: 2, bgcolor: 'primary.50', borderRadius: 2 }}>
+                  <Typography variant="caption" fontWeight={700} color="primary.main" sx={{ display: 'block', mb: 1 }}>
+                    Exam Pattern (Fixed)
+                  </Typography>
+                  <Stack spacing={0.5}>
+                    <Typography variant="caption" color="text.secondary" fontWeight={600}>Section 1 — 25 min</Typography>
+                    <Stack direction="row" spacing={1} sx={{ pl: 1 }}>
+                      <Chip size="small" label="25 MCQs" />
+                      <Chip size="small" label="Email Writing" />
                     </Stack>
-                  </Paper>
-                )}
+                    <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mt: 0.5 }}>Section 2 — 25 min</Typography>
+                    <Stack direction="row" spacing={1} sx={{ pl: 1 }}>
+                      <Chip size="small" label="Letter Writing" />
+                      <Chip size="small" label="Table / Statement" />
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mt: 0.5 }}>Section 3 — Dynamic (WPM-based timer)</Typography>
+                    <Stack direction="row" spacing={1} sx={{ pl: 1 }}>
+                      <Chip size="small" label="Speed Passage" color="primary" />
+                    </Stack>
+                  </Stack>
+                </Paper>
 
                 {/* Date & Time */}
                 <Stack direction="row" spacing={2}>
@@ -450,7 +424,7 @@ export default function ExamsPage() {
           <Button
             variant="contained" size="large"
             onClick={handleSchedule}
-            disabled={saving || selectedStudents.length === 0 || !selectedPattern || !examDate}
+            disabled={saving || selectedStudents.length === 0 || !examDate}
             startIcon={saving ? <CircularProgress size={20} /> : <CheckCircle />}
           >
             {saving ? 'Validating…' : `Schedule for ${selectedStudents.length} Student${selectedStudents.length !== 1 ? 's' : ''}`}

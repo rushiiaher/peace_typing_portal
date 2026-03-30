@@ -17,13 +17,12 @@ export async function POST(req: NextRequest) {
         const {
             courseId,
             batchId,
-            patternId,
             examDate, // "YYYY-MM-DD"
             startTime, // "HH:mm"
             studentIds // string[]
         } = body;
 
-        if (!courseId || !batchId || !patternId || !examDate || !startTime || !studentIds?.length) {
+        if (!courseId || !batchId || !examDate || !startTime || !studentIds?.length) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
@@ -64,11 +63,22 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: `The selected date (${dayName}) is a non-working day for this institute.` }, { status: 400 });
         }
 
-        // 3. Get Pattern Details
-        const { data: patternData } = await admin.from('exam_patterns').select('*').eq('id', patternId).single();
-        const pattern = patternData as any;
-        if (!pattern) return NextResponse.json({ error: 'Invalid exam pattern' }, { status: 400 });
+        // 3. Auto-Resolve Exam Pattern for this Course
+        // The exam pattern is fixed — one pattern per course. Fetch it automatically.
+        const { data: patternData, error: patternErr } = await admin
+            .from('exam_patterns')
+            .select('*')
+            .eq('course_id', courseId)
+            .eq('is_active', true)
+            .single();
 
+        if (patternErr || !patternData) {
+            return NextResponse.json({
+                error: 'No active exam pattern configured for this course. Please contact the super admin.'
+            }, { status: 400 });
+        }
+
+        const pattern = patternData as any;
         const totalDuration = pattern.duration_minutes;
         const bufferMinutes = 30;
         const windowDuration = totalDuration + bufferMinutes;
@@ -78,7 +88,6 @@ export async function POST(req: NextRequest) {
         const endDateTime = addMinutes(startDateTime, totalDuration);
         const windowEndDateTime = addMinutes(startDateTime, windowDuration);
 
-        // Convert times to comparable strings HH:mm:ss
         const startStr = format(startDateTime, 'HH:mm:ss');
         const endStr = format(endDateTime, 'HH:mm:ss');
 
@@ -88,15 +97,12 @@ export async function POST(req: NextRequest) {
 
         // --- PHASE 2: HARDWARE CONFLICT CHECK ---
 
-        // 1. Get all hardware (systems)
         const { data: systemsData } = await admin.from('institute_systems').select('*').eq('institute_id', instituteId);
         const systems = systemsData as any[] || [];
         if (systems.length === 0) {
             return NextResponse.json({ error: 'No exam systems/terminals configured for this institute.' }, { status: 400 });
         }
 
-        // 2. Check Overlapping Exams
-        // Overlap if (ProposedStart < ExistingEnd+Buffer) AND (ProposedEnd+Buffer > ExistingStart)
         const { data: existingExams } = await admin
             .from('exams')
             .select('id, system_id, start_time, end_time')
@@ -105,13 +111,10 @@ export async function POST(req: NextRequest) {
             .filter('start_time', 'gte', `${examDate}T00:00:00Z`)
             .filter('start_time', 'lte', `${examDate}T23:59:59Z`);
 
-        // Identify booked system IDs in the proposed window
         const bookedSystemIds = new Set();
         (existingExams ?? []).forEach(ex => {
             const exStart = new Date(ex.start_time);
             const exEndWithBuffer = addMinutes(new Date(ex.end_time), bufferMinutes);
-
-            // Typical overlap detection
             if (startDateTime < exEndWithBuffer && windowEndDateTime > exStart) {
                 if (ex.system_id) bookedSystemIds.add(ex.system_id);
             }
@@ -138,7 +141,7 @@ export async function POST(req: NextRequest) {
                 student_id: studentId,
                 course_id: courseId,
                 batch_id: batchId,
-                exam_pattern_id: patternId,
+                exam_pattern_id: pattern.id,
                 status: 'scheduled',
                 exam_date: examDate,
                 start_time: startDateTime.toISOString(),
@@ -150,7 +153,6 @@ export async function POST(req: NextRequest) {
             });
         }
 
-        // Batch Insert
         const { data: createdExams, error: createErr } = await admin
             .from('exams')
             .insert(finalExams)
@@ -158,32 +160,31 @@ export async function POST(req: NextRequest) {
 
         if (createErr) throw createErr;
 
-        // --- PHASE 4: QUESTION BANK SNAPSHOT (Automated Allocation) ---
-        // For each created exam, pick random questions based on pattern
+        // --- PHASE 4: QUESTION BANK SNAPSHOT ---
+        // Fixed pattern: Section 1 = 25 MCQs + 1 Email, Section 2 = 1 Letter + 1 Statement, Section 3 = 1 Speed Passage
         for (const ex of createdExams) {
             const assignments: any[] = [];
 
-            // Pick MCQs
             if (pattern.mcq_count > 0) {
                 const { data: mcqs } = await admin.from('mcq_question_bank').select('id').eq('course_id', courseId).limit(pattern.mcq_count);
                 (mcqs as any[])?.forEach(q => assignments.push({ exam_id: ex.id, question_type: 'mcq', content_id: q.id }));
             }
 
-            // Pick Speed Passage (usually 1)
             if (pattern.speed_passage_count > 0) {
                 const { data: speed } = await admin.from('speed_passages').select('id').eq('course_id', courseId).limit(pattern.speed_passage_count);
                 (speed as any[])?.forEach(q => assignments.push({ exam_id: ex.id, question_type: 'speed', content_id: q.id }));
             }
 
-            // Pick Letter/Statement/Email...
             if (pattern.letter_count > 0) {
                 const { data: letters } = await admin.from('letter_templates').select('id').eq('course_id', courseId).limit(pattern.letter_count);
                 (letters as any[])?.forEach(q => assignments.push({ exam_id: ex.id, question_type: 'letter', content_id: q.id }));
             }
+
             if (pattern.statement_count > 0) {
                 const { data: statements } = await admin.from('statement_templates').select('id').eq('course_id', courseId).limit(pattern.statement_count);
                 (statements as any[])?.forEach(q => assignments.push({ exam_id: ex.id, question_type: 'statement', content_id: q.id }));
             }
+
             if (pattern.email_count > 0) {
                 const { data: emails } = await admin.from('email_templates').select('id').eq('course_id', courseId).limit(pattern.email_count);
                 (emails as any[])?.forEach(q => assignments.push({ exam_id: ex.id, question_type: 'email', content_id: q.id }));
