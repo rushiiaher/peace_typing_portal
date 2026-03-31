@@ -52,11 +52,18 @@ export default function ExamsPage() {
   );
   const filteredBatches = selectedCourse ? batches.filter(b => b.course_id === selectedCourse) : [];
 
+  const [fetchError, setFetchError] = useState('');
+
   const fetchExams = useCallback(async () => {
     setLoading(true);
-    const res = await fetch('/api/institute/exams');
-    if (res.ok) setExams((await res.json()).exams ?? []);
-    setLoading(false);
+    setFetchError('');
+    try {
+      const res = await fetch('/api/institute/exams');
+      const j = await res.json();
+      if (!res.ok) { setFetchError(j.error || 'Failed to load exams'); }
+      else setExams(j.exams ?? []);
+    } catch (e: any) { setFetchError(e.message); }
+    finally { setLoading(false); }
   }, []);
 
   const fetchBasics = async () => {
@@ -257,6 +264,10 @@ export default function ExamsPage() {
         <Tab label={`All Exams (${exams.length})`} />
         <Tab label={`Today's Attendance (${todayExams.length})`} />
       </Tabs>
+
+      {fetchError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setFetchError('')}>{fetchError}</Alert>
+      )}
 
       <Paper variant="outlined" sx={{ borderRadius: 2 }}>
         {loading ? (
