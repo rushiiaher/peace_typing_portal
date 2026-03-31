@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
                 exam_pattern_id,
                 exam_patterns ( pattern_name, duration_minutes, section_1_duration, section_2_duration ),
                 system_id,
-                institute_systems ( system_name, system_number )
+                institute_systems ( system_name )
             `)
             .eq('id', examId)
             .single();
@@ -113,7 +113,7 @@ export async function GET(req: NextRequest) {
         const examObj = exam as any;
         const system = examObj.institute_systems;
         const systemLabel = system
-            ? (system.system_name || `PC-${system.system_number}`)
+            ? system.system_name
             : '—';
 
         const inst = (institute as any) ?? {};

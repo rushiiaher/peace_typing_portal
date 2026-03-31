@@ -61,7 +61,7 @@ export async function GET() {
                 ? admin.from('courses').select('id, name').in('id', courseIds)
                 : Promise.resolve({ data: [], error: null }),
             systemIds.length > 0
-                ? admin.from('institute_systems').select('id, system_name, system_number').in('id', systemIds)
+                ? admin.from('institute_systems').select('id, system_name').in('id', systemIds)
                 : Promise.resolve({ data: [], error: null }),
         ]);
 
@@ -88,7 +88,7 @@ export async function GET() {
                 start_time: e.start_time,
                 status: e.status,
                 attendance: e.attendance_status,
-                system_name: sys ? (sys.system_name || `PC-${sys.system_number}`) : '—',
+                system_name: sys?.system_name ?? '—',
                 center_code: e.exam_center_code ?? '—',
             };
         });
