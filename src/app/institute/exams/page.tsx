@@ -19,7 +19,7 @@ import { generateAdmitCardHtml } from '../../../utils/generateAdmitCardHtml';
 
 interface ExamRow {
   id: string; student_name: string; enrollment: string;
-  course_name: string; pattern_name: string; exam_date: string;
+  course_name: string; exam_date: string;
   start_time: string; status: string; attendance: string;
   system_name: string; center_code: string;
 }
@@ -151,12 +151,7 @@ export default function ExamsPage() {
         </Stack>
       )
     },
-    {
-      field: 'course_name', headerName: 'Course', width: 200,
-      renderCell: p => (
-        <Typography variant="body2">{p.value}</Typography>
-      )
-    },
+    { field: 'course_name', headerName: 'Course', width: 200 },
     {
       field: 'start_time', headerName: 'Scheduled', width: 180,
       renderCell: p => p.value ? (

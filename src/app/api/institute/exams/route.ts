@@ -22,19 +22,21 @@ export async function GET() {
 
         const instituteId = instAdmin.institute_id;
 
-        // Step 1: Get all student IDs in this institute
-        const { data: instituteStudents } = await admin
-            .from('students')
+        // Step 1: Get all batch IDs for this institute
+        // (Batches are always set on exams during scheduling and reliably link to the institute)
+        const { data: batchData, error: batchErr } = await admin
+            .from('batches')
             .select('id')
-            .eq('institute_id', instituteId)
-            .eq('is_active', true);
+            .eq('institute_id', instituteId);
 
-        const studentIds = (instituteStudents ?? []).map(s => s.id);
-        if (studentIds.length === 0) {
+        if (batchErr) throw batchErr;
+
+        const batchIds = (batchData ?? []).map((b: any) => b.id);
+        if (batchIds.length === 0) {
             return NextResponse.json({ exams: [] });
         }
 
-        // Step 2: Fetch exams for these students
+        // Step 2: Fetch all exams for these batches
         const { data, error } = await admin
             .from('exams')
             .select(`
@@ -42,10 +44,9 @@ export async function GET() {
                 system_id, exam_center_code,
                 students ( name, enrollment_number ),
                 courses ( name ),
-                exam_patterns!exam_pattern_id ( pattern_name ),
-                institute_systems!system_id ( system_name, system_number )
+                institute_systems ( system_name, system_number )
             `)
-            .in('student_id', studentIds)
+            .in('batch_id', batchIds)
             .order('start_time', { ascending: false, nullsFirst: false });
 
         if (error) throw error;
@@ -55,7 +56,6 @@ export async function GET() {
             student_name: e.students?.name ?? '—',
             enrollment: e.students?.enrollment_number ?? '—',
             course_name: e.courses?.name ?? '—',
-            pattern_name: e.exam_patterns?.pattern_name ?? '—',
             exam_date: e.exam_date,
             start_time: e.start_time,
             status: e.status,
