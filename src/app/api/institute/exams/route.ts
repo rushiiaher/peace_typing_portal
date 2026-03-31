@@ -59,8 +59,9 @@ export async function GET() {
         const studentIds = [...new Set(rawExams.map((e: any) => e.student_id).filter(Boolean))];
         const courseIds  = [...new Set(rawExams.map((e: any) => e.course_id).filter(Boolean))];
         const systemIds  = [...new Set(rawExams.map((e: any) => e.system_id).filter(Boolean))];
+        const batchIdSet = [...new Set(rawExams.map((e: any) => e.batch_id).filter(Boolean))];
 
-        const [stuRes, crsRes, sysRes] = await Promise.all([
+        const [stuRes, crsRes, sysRes, batRes] = await Promise.all([
             studentIds.length > 0
                 ? admin.from('students').select('id, name, enrollment_number').in('id', studentIds)
                 : Promise.resolve({ data: [], error: null }),
@@ -70,21 +71,28 @@ export async function GET() {
             systemIds.length > 0
                 ? admin.from('institute_systems').select('id, system_name').in('id', systemIds)
                 : Promise.resolve({ data: [], error: null }),
+            batchIdSet.length > 0
+                ? admin.from('batches').select('id, batch_name, batch_code').in('id', batchIdSet)
+                : Promise.resolve({ data: [], error: null }),
         ]);
 
         if (stuRes.error) throw stuRes.error;
         if (crsRes.error) throw crsRes.error;
         if (sysRes.error) throw sysRes.error;
+        if (batRes.error) throw batRes.error;
 
         const stuMap = Object.fromEntries((stuRes.data ?? []).map((s: any) => [s.id, s]));
         const crsMap = Object.fromEntries((crsRes.data ?? []).map((c: any) => [c.id, c]));
         const sysMap = Object.fromEntries((sysRes.data ?? []).map((s: any) => [s.id, s]));
+        const batMap = Object.fromEntries((batRes.data ?? []).map((b: any) => [b.id, b]));
 
         const exams = rawExams.map((e: any) => ({
             id: e.id,
             student_name: stuMap[e.student_id]?.name ?? '—',
             enrollment: stuMap[e.student_id]?.enrollment_number ?? '—',
             course_name: crsMap[e.course_id]?.name ?? '—',
+            batch_id: e.batch_id ?? '',
+            batch_name: batMap[e.batch_id] ? `${batMap[e.batch_id].batch_name} (${batMap[e.batch_id].batch_code})` : '—',
             exam_date: e.exam_date,
             start_time: e.start_time,
             status: e.status,
