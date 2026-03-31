@@ -4,13 +4,14 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Box, Button, Typography, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, MenuItem, Tabs, Tab, Divider,
-  Stack, Checkbox, ListItemText, FormControl, Alert, CircularProgress,
+  Stack, Checkbox, ListItemText, Alert, CircularProgress,
   Tooltip, IconButton, Card, CardContent, Grid, Chip, Paper, Avatar,
 } from '@mui/material';
-import { DataGrid, GridColDef } from '@mui/x-data-grid';
+import { DataGrid, GridColDef, GridRowSelectionModel } from '@mui/x-data-grid';
 import {
-  Add, Schedule, CheckCircle, Cancel, Print, Computer, Info,
+  Add, Schedule, CheckCircle, Print, Computer, Info,
   Event, AccessTime, HowToReg, PersonOff, Refresh,
+  Edit, Delete, EditCalendar, DeleteForever,
 } from '@mui/icons-material';
 import AdminLayout from '../../components/AdminLayout';
 import { instituteAdminMenuItems } from '../../components/menuItems';
@@ -31,14 +32,15 @@ export default function ExamsPage() {
   const [tab, setTab] = useState(0);
   const [exams, setExams] = useState<ExamRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
 
+  // Schedule dialog
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [systems, setSystems] = useState<SystemItem[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [stuLoading, setStuLoading] = useState(false);
-
   const [selectedCourse, setSelectedCourse] = useState('');
   const [selectedBatch, setSelectedBatch] = useState('');
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
@@ -47,12 +49,26 @@ export default function ExamsPage() {
   const [scheduleError, setScheduleError] = useState('');
   const [scheduleSuccess, setScheduleSuccess] = useState('');
 
+  // Row selection (for bulk actions)
+  const [selection, setSelection] = useState<GridRowSelectionModel>([]);
+
+  // Reschedule dialog
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [rescheduleIds, setRescheduleIds] = useState<string[]>([]);
+  const [newDate, setNewDate] = useState('');
+  const [newTime, setNewTime] = useState('10:00');
+  const [rescheduleSaving, setRescheduleSaving] = useState(false);
+  const [rescheduleError, setRescheduleError] = useState('');
+
+  // Delete confirm dialog
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteIds, setDeleteIds] = useState<string[]>([]);
+  const [deleteSaving, setDeleteSaving] = useState(false);
+
   const uniqueCourses = Array.from(
     new Map(batches.map(b => [b.course_id, { id: b.course_id, name: b.course_name }])).values()
   );
   const filteredBatches = selectedCourse ? batches.filter(b => b.course_id === selectedCourse) : [];
-
-  const [fetchError, setFetchError] = useState('');
 
   const fetchExams = useCallback(async () => {
     setLoading(true);
@@ -60,7 +76,7 @@ export default function ExamsPage() {
     try {
       const res = await fetch('/api/institute/exams');
       const j = await res.json();
-      if (!res.ok) { setFetchError(j.error || 'Failed to load exams'); }
+      if (!res.ok) setFetchError(j.error || 'Failed to load exams');
       else setExams(j.exams ?? []);
     } catch (e: any) { setFetchError(e.message); }
     finally { setLoading(false); }
@@ -88,6 +104,7 @@ export default function ExamsPage() {
       .finally(() => setStuLoading(false));
   }, [selectedBatch, batches]);
 
+  // ── Schedule ──────────────────────────────────────────────────────────────
   const handleSchedule = async () => {
     setScheduleError('');
     const batch = batches.find(b => b.id === selectedBatch);
@@ -100,28 +117,19 @@ export default function ExamsPage() {
       const res = await fetch('/api/institute/exams/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          courseId: batch?.course_id,
-          batchId: selectedBatch,
-          examDate,
-          startTime,
-          studentIds: selectedStudents,
-        }),
+        body: JSON.stringify({ courseId: batch?.course_id, batchId: selectedBatch, examDate, startTime, studentIds: selectedStudents }),
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.message || j.error || 'Failed to schedule');
       setScheduleSuccess(j.message || `Scheduled ${selectedStudents.length} exams.`);
       setOpen(false);
       fetchExams();
-      setSelectedCourse(''); setSelectedBatch('');
-      setSelectedStudents([]); setScheduleError('');
-    } catch (e: any) {
-      setScheduleError(e.message);
-    } finally {
-      setSaving(false);
-    }
+      setSelectedCourse(''); setSelectedBatch(''); setSelectedStudents([]); setScheduleError('');
+    } catch (e: any) { setScheduleError(e.message); }
+    finally { setSaving(false); }
   };
 
+  // ── Attendance ────────────────────────────────────────────────────────────
   const markAttendance = async (id: string, status: 'present' | 'absent') => {
     const res = await fetch('/api/institute/exams', {
       method: 'PATCH',
@@ -131,6 +139,7 @@ export default function ExamsPage() {
     if (res.ok) fetchExams();
   };
 
+  // ── Admit Card ────────────────────────────────────────────────────────────
   const printAdmitCard = async (examId: string) => {
     try {
       const res = await fetch(`/api/institute/exams/admit-card?examId=${examId}`);
@@ -141,13 +150,67 @@ export default function ExamsPage() {
       if (!win) { alert('Pop-up blocked! Please allow pop-ups for this site.'); return; }
       win.document.write(html);
       win.document.close();
-    } catch (e: any) {
-      alert('Admit Card Error: ' + e.message);
+    } catch (e: any) { alert('Admit Card Error: ' + e.message); }
+  };
+
+  // ── Reschedule ────────────────────────────────────────────────────────────
+  const openReschedule = (ids: string[]) => {
+    // Pre-fill with the current date/time of the first exam in selection
+    const first = exams.find(e => ids.includes(e.id));
+    if (first?.start_time) {
+      const dt = parseISO(first.start_time);
+      setNewDate(format(dt, 'yyyy-MM-dd'));
+      setNewTime(format(dt, 'HH:mm'));
+    } else {
+      setNewDate(''); setNewTime('10:00');
     }
+    setRescheduleIds(ids);
+    setRescheduleError('');
+    setRescheduleOpen(true);
+  };
+
+  const handleReschedule = async () => {
+    if (!newDate || !newTime) { setRescheduleError('Please select a new date and time.'); return; }
+    setRescheduleSaving(true);
+    setRescheduleError('');
+    try {
+      const res = await fetch('/api/institute/exams', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: rescheduleIds, newExamDate: newDate, newStartTime: newTime }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || 'Reschedule failed');
+      setRescheduleOpen(false);
+      setSelection([]);
+      fetchExams();
+    } catch (e: any) { setRescheduleError(e.message); }
+    finally { setRescheduleSaving(false); }
+  };
+
+  // ── Delete ────────────────────────────────────────────────────────────────
+  const openDelete = (ids: string[]) => { setDeleteIds(ids); setDeleteOpen(true); };
+
+  const handleDelete = async () => {
+    setDeleteSaving(true);
+    try {
+      const res = await fetch('/api/institute/exams', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: deleteIds }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || 'Delete failed');
+      setDeleteOpen(false);
+      setSelection([]);
+      fetchExams();
+    } catch (e: any) { alert('Delete failed: ' + e.message); }
+    finally { setDeleteSaving(false); }
   };
 
   const todayExams = exams.filter(e => e.exam_date === format(new Date(), 'yyyy-MM-dd'));
 
+  // ── DataGrid columns ──────────────────────────────────────────────────────
   const examCols: GridColDef[] = [
     {
       field: 'student_name', headerName: 'Student', width: 200,
@@ -158,19 +221,21 @@ export default function ExamsPage() {
         </Stack>
       )
     },
-    { field: 'course_name', headerName: 'Course', width: 200 },
+    { field: 'course_name', headerName: 'Course', width: 180 },
     {
-      field: 'start_time', headerName: 'Scheduled', width: 180,
+      field: 'start_time', headerName: 'Scheduled', width: 200,
       renderCell: p => p.value ? (
         <Stack>
           <Typography variant="body2">{format(parseISO(p.value), 'dd MMM yyyy')}</Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <AccessTime fontSize="inherit" color="action" />
             <Typography variant="caption" color="text.secondary">{format(parseISO(p.value), 'hh:mm a')}</Typography>
-            {p.row.system_name && <>
-              <Computer fontSize="inherit" color="action" sx={{ ml: 0.5 }} />
-              <Typography variant="caption" color="text.secondary">{p.row.system_name}</Typography>
-            </>}
+            {p.row.system_name && p.row.system_name !== '—' && (
+              <>
+                <Computer fontSize="inherit" color="action" sx={{ ml: 0.5 }} />
+                <Typography variant="caption" color="text.secondary">{p.row.system_name}</Typography>
+              </>
+            )}
           </Box>
         </Stack>
       ) : <Typography variant="caption" color="text.secondary">—</Typography>
@@ -199,22 +264,42 @@ export default function ExamsPage() {
       ) : <Chip label={p.value?.toUpperCase()} size="small" variant="outlined" color={p.value === 'present' ? 'success' : 'error'} />
     },
     {
-      field: 'admit_card', headerName: 'Admit Card', width: 130, sortable: false,
+      field: 'admit_card', headerName: 'Admit Card', width: 110, sortable: false,
       renderCell: p => (
         <Tooltip title="Print Admit Card">
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={<Print fontSize="small" />}
-            onClick={() => printAdmitCard(p.row.id)}
-            sx={{ borderRadius: 2, fontSize: 11 }}
-          >
+          <Button size="small" variant="outlined" startIcon={<Print fontSize="small" />}
+            onClick={() => printAdmitCard(p.row.id)} sx={{ borderRadius: 2, fontSize: 11 }}>
             Print
           </Button>
         </Tooltip>
       )
     },
+    {
+      field: 'actions', headerName: 'Actions', width: 100, sortable: false,
+      renderCell: p => (
+        <Stack direction="row" spacing={0.5}>
+          <Tooltip title="Reschedule">
+            <IconButton size="small" color="primary"
+              disabled={p.row.status === 'completed' || p.row.status === 'in_progress'}
+              onClick={() => openReschedule([p.row.id])}>
+              <Edit fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Delete Exam">
+            <IconButton size="small" color="error"
+              disabled={p.row.status === 'completed' || p.row.status === 'in_progress'}
+              onClick={() => openDelete([p.row.id])}>
+              <Delete fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+      )
+    },
   ];
+
+  const selectedIds = selection as string[];
+  const selectedExams = exams.filter(e => selectedIds.includes(e.id));
+  const allScheduled = selectedExams.every(e => e.status === 'scheduled');
 
   return (
     <AdminLayout menuItems={instituteAdminMenuItems} title="Exam Management">
@@ -227,7 +312,9 @@ export default function ExamsPage() {
         </Box>
         <Stack direction="row" spacing={1}>
           <Tooltip title="Refresh"><IconButton onClick={fetchExams}><Refresh /></IconButton></Tooltip>
-          <Button variant="contained" startIcon={<Add />} onClick={() => { setOpen(true); setScheduleError(''); setScheduleSuccess(''); }} size="large" sx={{ borderRadius: 2 }}>
+          <Button variant="contained" startIcon={<Add />}
+            onClick={() => { setOpen(true); setScheduleError(''); setScheduleSuccess(''); }}
+            size="large" sx={{ borderRadius: 2 }}>
             Schedule Exam
           </Button>
         </Stack>
@@ -269,6 +356,35 @@ export default function ExamsPage() {
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setFetchError('')}>{fetchError}</Alert>
       )}
 
+      {/* Bulk Action Bar — shown when rows are selected */}
+      {selectedIds.length > 0 && (
+        <Paper variant="outlined" sx={{ mb: 1, px: 2, py: 1, borderRadius: 2, display: 'flex', alignItems: 'center', gap: 2, bgcolor: 'primary.50', borderColor: 'primary.200' }}>
+          <Typography variant="body2" fontWeight={700} color="primary.main">
+            {selectedIds.length} exam{selectedIds.length !== 1 ? 's' : ''} selected
+          </Typography>
+          <Stack direction="row" spacing={1} sx={{ ml: 'auto' }}>
+            <Button
+              size="small" variant="outlined" startIcon={<EditCalendar />}
+              disabled={!allScheduled}
+              onClick={() => openReschedule(selectedIds)}
+            >
+              Reschedule Selected
+            </Button>
+            <Button
+              size="small" variant="outlined" color="error" startIcon={<DeleteForever />}
+              disabled={!allScheduled}
+              onClick={() => openDelete(selectedIds)}
+            >
+              Delete Selected
+            </Button>
+            <Button size="small" color="inherit" onClick={() => setSelection([])}>Clear</Button>
+          </Stack>
+          {!allScheduled && (
+            <Typography variant="caption" color="text.secondary">(Only scheduled exams can be edited)</Typography>
+          )}
+        </Paper>
+      )}
+
       <Paper variant="outlined" sx={{ borderRadius: 2 }}>
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 8 }}><CircularProgress /></Box>
@@ -277,6 +393,10 @@ export default function ExamsPage() {
             rows={tab === 0 ? exams : todayExams}
             columns={examCols}
             autoHeight density="comfortable"
+            checkboxSelection
+            disableRowSelectionOnClick
+            rowSelectionModel={selection}
+            onRowSelectionModelChange={setSelection}
             pageSizeOptions={[10, 25, 50]}
             initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
             sx={{ border: 'none' }}
@@ -284,7 +404,7 @@ export default function ExamsPage() {
         )}
       </Paper>
 
-      {/* ── Schedule Dialog ── */}
+      {/* ── Schedule Dialog ──────────────────────────────────────────────── */}
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pb: 1 }}>
           <Schedule color="primary" />
@@ -296,42 +416,30 @@ export default function ExamsPage() {
         <Divider />
         <DialogContent sx={{ p: 3 }}>
           <Grid container spacing={3}>
-            {/* Left: form */}
             <Grid item xs={12} md={6}>
               <Stack spacing={2.5}>
-                {/* Course */}
                 <TextField select label="Course *" value={selectedCourse}
                   onChange={e => { setSelectedCourse(e.target.value); setSelectedBatch(''); setSelectedStudents([]); }} fullWidth>
                   {uniqueCourses.map(c => <MenuItem key={c.id} value={c.id}>{c.name || 'Unknown'}</MenuItem>)}
                 </TextField>
 
-                {/* Batch */}
                 <TextField select label="Batch *" value={selectedBatch}
                   onChange={e => { setSelectedBatch(e.target.value); setSelectedStudents([]); }}
                   fullWidth disabled={!selectedCourse} helperText={!selectedCourse ? 'Select course first' : ''}>
                   {filteredBatches.map(b => <MenuItem key={b.id} value={b.id}>{b.batch_name} ({b.batch_code})</MenuItem>)}
                 </TextField>
 
-                {/* No systems warning */}
-                {systems.length === 0 && (
+                {systems.length === 0 ? (
                   <Alert severity="warning" sx={{ borderRadius: 2 }}
-                    action={
-                      <Button size="small" color="inherit" href="/institute/settings" target="_blank">
-                        Add Systems
-                      </Button>
-                    }
-                  >
+                    action={<Button size="small" color="inherit" href="/institute/settings" target="_blank">Add Systems</Button>}>
                     <strong>No exam systems configured.</strong> Go to Settings → Systems and add your exam computers before scheduling.
                   </Alert>
-                )}
-
-                {systems.length > 0 && (
+                ) : (
                   <Alert severity="success" icon={<Computer fontSize="small" />} sx={{ py: 0.5, borderRadius: 2 }}>
                     {systems.length} system{systems.length !== 1 ? 's' : ''} available for allocation.
                   </Alert>
                 )}
 
-                {/* Fixed Exam Pattern Info */}
                 <Paper variant="outlined" sx={{ p: 2, bgcolor: 'primary.50', borderRadius: 2 }}>
                   <Typography variant="caption" fontWeight={700} color="primary.main" sx={{ display: 'block', mb: 1 }}>
                     Exam Pattern (Fixed)
@@ -339,13 +447,11 @@ export default function ExamsPage() {
                   <Stack spacing={0.5}>
                     <Typography variant="caption" color="text.secondary" fontWeight={600}>Section 1 — 25 min</Typography>
                     <Stack direction="row" spacing={1} sx={{ pl: 1 }}>
-                      <Chip size="small" label="25 MCQs" />
-                      <Chip size="small" label="Email Writing" />
+                      <Chip size="small" label="25 MCQs" /><Chip size="small" label="Email Writing" />
                     </Stack>
                     <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mt: 0.5 }}>Section 2 — 25 min</Typography>
                     <Stack direction="row" spacing={1} sx={{ pl: 1 }}>
-                      <Chip size="small" label="Letter Writing" />
-                      <Chip size="small" label="Table / Statement" />
+                      <Chip size="small" label="Letter Writing" /><Chip size="small" label="Table / Statement" />
                     </Stack>
                     <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mt: 0.5 }}>Section 3 — Dynamic (WPM-based timer)</Typography>
                     <Stack direction="row" spacing={1} sx={{ pl: 1 }}>
@@ -354,24 +460,19 @@ export default function ExamsPage() {
                   </Stack>
                 </Paper>
 
-                {/* Date & Time */}
                 <Stack direction="row" spacing={2}>
-                  <TextField fullWidth type="date" label="Exam Date *"
-                    InputLabelProps={{ shrink: true }}
-                    value={examDate} onChange={e => setExamDate(e.target.value)}
-                    helperText="Min 6 days from today" />
-                  <TextField fullWidth type="time" label="Start Time *"
-                    InputLabelProps={{ shrink: true }}
+                  <TextField fullWidth type="date" label="Exam Date *" InputLabelProps={{ shrink: true }}
+                    value={examDate} onChange={e => setExamDate(e.target.value)} helperText="Min 6 days from today" />
+                  <TextField fullWidth type="time" label="Start Time *" InputLabelProps={{ shrink: true }}
                     value={startTime} onChange={e => setStartTime(e.target.value)} />
                 </Stack>
 
                 <Alert severity="info" icon={<Info />} sx={{ py: 0.5 }}>
-                  Systems are auto-allocated. Reporting time = 30 min before start.
+                  Systems are auto-allocated. If students exceed available systems, overflow is batched into the next slot (+ 20 min cooldown).
                 </Alert>
               </Stack>
             </Grid>
 
-            {/* Right: students */}
             <Grid item xs={12} md={6}>
               <Card variant="outlined" sx={{ height: '100%', display: 'flex', flexDirection: 'column', borderRadius: 2 }}>
                 <Box sx={{ p: 2, bgcolor: 'action.hover', borderBottom: 1, borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -443,25 +544,74 @@ export default function ExamsPage() {
             </Grid>
 
             {scheduleError && (
-              <Grid item xs={12}>
-                <Alert severity="error">{scheduleError}</Alert>
-              </Grid>
+              <Grid item xs={12}><Alert severity="error">{scheduleError}</Alert></Grid>
             )}
           </Grid>
         </DialogContent>
         <Divider />
         <DialogActions sx={{ px: 3, py: 2.5 }}>
           <Button onClick={() => setOpen(false)} variant="outlined">Cancel</Button>
-          <Button
-            variant="contained" size="large"
-            onClick={handleSchedule}
+          <Button variant="contained" size="large" onClick={handleSchedule}
             disabled={saving || selectedStudents.length === 0 || !examDate || systems.length === 0}
-            startIcon={saving ? <CircularProgress size={20} /> : <CheckCircle />}
-          >
+            startIcon={saving ? <CircularProgress size={20} /> : <CheckCircle />}>
             {saving ? 'Validating…' : `Schedule for ${selectedStudents.length} Student${selectedStudents.length !== 1 ? 's' : ''}`}
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* ── Reschedule Dialog ────────────────────────────────────────────── */}
+      <Dialog open={rescheduleOpen} onClose={() => setRescheduleOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <EditCalendar color="primary" />
+          <Box>
+            <Typography variant="h6">Reschedule Exam{rescheduleIds.length > 1 ? 's' : ''}</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {rescheduleIds.length} exam{rescheduleIds.length !== 1 ? 's' : ''} will be rescheduled. System allocation stays the same.
+            </Typography>
+          </Box>
+        </DialogTitle>
+        <Divider />
+        <DialogContent sx={{ pt: 3 }}>
+          <Stack spacing={2.5}>
+            <TextField fullWidth type="date" label="New Exam Date *"
+              InputLabelProps={{ shrink: true }}
+              value={newDate} onChange={e => setNewDate(e.target.value)}
+              helperText="Min 6 days from today" />
+            <TextField fullWidth type="time" label="New Start Time *"
+              InputLabelProps={{ shrink: true }}
+              value={newTime} onChange={e => setNewTime(e.target.value)} />
+            {rescheduleError && <Alert severity="error">{rescheduleError}</Alert>}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setRescheduleOpen(false)} variant="outlined">Cancel</Button>
+          <Button variant="contained" onClick={handleReschedule} disabled={rescheduleSaving}
+            startIcon={rescheduleSaving ? <CircularProgress size={18} /> : <CheckCircle />}>
+            {rescheduleSaving ? 'Saving…' : 'Confirm Reschedule'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Delete Confirm Dialog ─────────────────────────────────────────── */}
+      <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle>
+          <Typography variant="h6" color="error.main">Delete Exam{deleteIds.length > 1 ? 's' : ''}?</Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 1 }}>
+            You are about to delete <strong>{deleteIds.length}</strong> scheduled exam{deleteIds.length !== 1 ? 's' : ''}.
+            This will also remove all question assignments. This action cannot be undone.
+          </Alert>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setDeleteOpen(false)} variant="outlined">Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleDelete} disabled={deleteSaving}
+            startIcon={deleteSaving ? <CircularProgress size={18} /> : <DeleteForever />}>
+            {deleteSaving ? 'Deleting…' : `Delete ${deleteIds.length} Exam${deleteIds.length !== 1 ? 's' : ''}`}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
     </AdminLayout>
   );
 }
