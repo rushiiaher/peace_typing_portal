@@ -9,6 +9,7 @@ import {
 } from '@mui/icons-material';
 import { Editor } from '@tinymce/tinymce-react';
 import 'tinymce/tinymce';
+import 'tinymce/models/dom';
 import 'tinymce/icons/default';
 import 'tinymce/themes/silver';
 import 'tinymce/skins/ui/oxide/skin.min.css';
