@@ -3,10 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Box, Typography, CircularProgress, Alert, Button, IconButton, Divider } from '@mui/material';
-import {
-    ArrowBack, Replay, CheckCircle, Save, Undo, Redo,
-    Article, GridView, OpenInFull, ZoomIn, Search
-} from '@mui/icons-material';
+import { ArrowBack, Replay, CheckCircle } from '@mui/icons-material';
 import { Editor } from '@tinymce/tinymce-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -336,116 +333,171 @@ export default function LetterPracticeSession() {
     }
 
     return (
-        <Box sx={{
-            position: 'fixed', inset: 0, zIndex: 1400,
-            display: 'flex', flexDirection: 'column',
-            bgcolor: '#f3f2f1',
-            fontFamily: '"Segoe UI", Tahoma, sans-serif',
-        }}>
-            {/* ── Main Workspace ── */}
-            <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', bgcolor: '#808080' }}>
-                {/* Left: Reference Question (50% Width) */}
-                <Box sx={{
-                    width: '50%',
-                    overflow: 'auto',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    borderRight: '2px solid #333',
-                    p: 4,
-                    bgcolor: '#666'
-                }}>
-                    <Typography textAlign="center" sx={{ color: 'white', fontSize: 11, fontWeight: 700, mb: 3, letterSpacing: 2, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>
-                        REFERENCE DOCUMENT
-                    </Typography>
+        <>
+            {/*
+              * Fix 1 — TinyMCE dropdown/dialog z-index:
+              *   TinyMCE appends .tox-tinymce-aux to <body> with z-index ~1300.
+              *   Our overlay sits at z-index 1400, so all TinyMCE floating menus
+              *   render BEHIND it and appear non-functional. Raise aux above overlay.
+              *
+              * Fix 2 — menubar item layout:
+              *   MUI's global CSS reset can override TinyMCE's flex row layout on
+              *   .tox-menubar, causing items to stack vertically. Enforce flex row.
+              *
+              * Fix 3 — editor height:
+              *   TinyMCE init height:'100%' requires the wrapper to have a CSS height.
+              *   We use flex:1 + height:100% on both the wrapper div and the .tox root.
+            */}
+            <style>{`
+                .tox-tinymce-aux { z-index: 1500 !important; }
+                .tox .tox-menu { z-index: 1500 !important; }
+                .tox .tox-dialog-wrap { z-index: 1500 !important; }
+                .tox .tox-dialog { z-index: 1500 !important; }
+                .tox .tox-menubar {
+                    display: flex !important;
+                    flex-direction: row !important;
+                    flex-wrap: nowrap !important;
+                    align-items: center !important;
+                }
+                .tox-promotion { display: none !important; }
+                /* Make TinyMCE fill its flex wrapper */
+                .letter-editor-wrap { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+                .letter-editor-wrap .tox.tox-tinymce { flex: 1; min-height: 0; }
+            `}</style>
+
+            <Box sx={{
+                position: 'fixed', inset: 0,
+                zIndex: 1400,
+                display: 'flex', flexDirection: 'column',
+                bgcolor: '#f3f2f1',
+                fontFamily: '"Segoe UI", Tahoma, sans-serif',
+            }}>
+                {/* ── Main Workspace ── */}
+                <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', bgcolor: '#808080' }}>
+
+                    {/* Left: Reference Document (50%) */}
                     <Box sx={{
-                        bgcolor: 'white',
-                        width: '100%',
-                        maxWidth: '560px',
-                        minHeight: '794px',
-                        p: '60px',
-                        boxShadow: '0 15px 50px rgba(0,0,0,0.6)',
-                        position: 'relative',
-                        mb: 6
+                        width: '50%',
+                        overflow: 'auto',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        borderRight: '2px solid #333',
+                        p: 4,
+                        bgcolor: '#666',
                     }}>
-                        <LetterPage p={parts} isMarathi={isMarathi} />
+                        <Typography textAlign="center" sx={{
+                            color: 'white', fontSize: 11, fontWeight: 700,
+                            mb: 3, letterSpacing: 2, textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+                        }}>
+                            REFERENCE DOCUMENT
+                        </Typography>
+                        <Box sx={{
+                            bgcolor: 'white',
+                            width: '100%',
+                            maxWidth: '560px',
+                            minHeight: '794px',
+                            p: '60px',
+                            boxShadow: '0 15px 50px rgba(0,0,0,0.6)',
+                            mb: 6,
+                        }}>
+                            <LetterPage p={parts} isMarathi={isMarathi} />
+                        </Box>
+                    </Box>
+
+                    {/* Right: TinyMCE Editor (50%) */}
+                    {/*
+                      * CRITICAL: do NOT set overflow:hidden here — it clips TinyMCE's
+                      * chrome (menubar / toolbar) causing the vertical stacking bug.
+                      * Height is managed by the flex chain: fixed(inset:0) → flex:1
+                      * workspace → flex:1 right panel → letter-editor-wrap flex:1.
+                    */}
+                    <Box sx={{
+                        width: '50%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        bgcolor: 'white',
+                        minHeight: 0,   /* required for flex children to shrink */
+                    }}>
+                        {/* The className drives the CSS that makes TinyMCE fill this panel */}
+                        <div className="letter-editor-wrap">
+                            <Editor
+                                tinymceScriptSrc="/tinymce/tinymce.min.js"
+                                licenseKey="gpl"
+                                value={content}
+                                onEditorChange={handleEditorChange}
+                                init={{
+                                    base_url: '/tinymce',
+                                    suffix: '.min',
+                                    height: '100%',
+                                    width: '100%',
+                                    menubar: true,
+                                    plugins: [
+                                        'advlist', 'autolink', 'lists', 'link', 'charmap', 'preview',
+                                        'anchor', 'searchreplace', 'visualblocks', 'fullscreen',
+                                        'insertdatetime', 'table', 'help', 'wordcount',
+                                    ],
+                                    toolbar:
+                                        'undo redo | blocks fontfamily fontsize | ' +
+                                        'bold italic underline | alignleft aligncenter ' +
+                                        'alignright alignjustify | table | bullist numlist outdent indent | ' +
+                                        'removeformat | help',
+                                    table_default_attributes: { border: '0' },
+                                    table_default_styles: { 'border-collapse': 'collapse', width: '100%' },
+                                    table_appearance_options: false,
+                                    content_style: `
+                                        body {
+                                            font-family: ${isMarathi
+                                            ? '"Kruti Dev 010", Arial, sans-serif'
+                                            : 'Calibri, "Segoe UI", sans-serif'};
+                                            font-size: ${isMarathi ? '16pt' : '11pt'};
+                                            padding: 50px;
+                                            margin: 0;
+                                            line-height: 1.5;
+                                        }
+                                    `,
+                                    branding: false,
+                                    statusbar: true,
+                                    elementpath: false,
+                                    promotion: false,
+                                    help_accessibility: false,
+                                    skin: 'oxide',
+                                }}
+                            />
+                        </div>
                     </Box>
                 </Box>
 
-                {/* Right: TinyMCE Editor Workspace (50% Width) */}
+                {/* ── Status Bar ── */}
                 <Box sx={{
-                    width: '50%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    bgcolor: 'white', // Changed to white for seamless look
-                    overflow: 'hidden',
-                    position: 'relative'
+                    bgcolor: '#2b579a', height: 32, px: 2, flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'white',
                 }}>
-                    <Editor
-                        tinymceScriptSrc="/tinymce/tinymce.min.js"
-                        licenseKey="gpl"
-                        value={content}
-                        onEditorChange={handleEditorChange}
-                        init={{
-                            base_url: '/tinymce',
-                            suffix: '.min',
-                            height: '100%',
-                            width: '100%',
-                            menubar: true,
-                            plugins: [
-                                'advlist', 'autolink', 'lists', 'link', 'charmap', 'preview',
-                                'anchor', 'searchreplace', 'visualblocks', 'fullscreen',
-                                'insertdatetime', 'table', 'help', 'wordcount'
-                            ],
-                            toolbar: 'undo redo | blocks fontfamily fontsize | ' +
-                                'bold italic underline | alignleft aligncenter ' +
-                                'alignright alignjustify | table | bullist numlist outdent indent | ' +
-                                'removeformat | help',
-                            table_default_attributes: { border: '0' },
-                            table_default_styles: { 'border-collapse': 'collapse', 'width': '100%' },
-                            table_appearance_options: false,
-                            content_style: `
-                                body {
-                                    font-family: ${isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : 'Calibri, "Segoe UI", sans-serif'};
-                                    font-size: ${isMarathi ? '16pt' : '11pt'};
-                                    padding: 50px;
-                                    margin: 0;
-                                    line-height: 1.5;
-                                }
-                            `,
-                            branding: false,
-                            statusbar: true,
-                            elementpath: false,
-                            promotion: false,
-                            help_accessibility: false,
-                            skin: 'oxide',
-                        }}
-                    />
+                    <Box sx={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+                        <Typography sx={{ fontSize: 11, fontWeight: 600 }}>WORD COUNT: {liveWords}</Typography>
+                        <Typography sx={{ fontSize: 11, fontWeight: 600 }}>WPM: {liveWpm}</Typography>
+                        <Typography sx={{ fontSize: 11, fontWeight: 600 }}>TIME: {timeStr}</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Button
+                            size="small" variant="contained"
+                            onClick={() => finishSession(content, elapsed || 1)}
+                            sx={{
+                                bgcolor: '#ffffff', color: '#2b579a',
+                                '&:hover': { bgcolor: '#f0f0f0' },
+                                textTransform: 'none', fontWeight: 700, fontSize: 11, height: 22,
+                            }}
+                        >
+                            Submit Work
+                        </Button>
+                        <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.3)', my: 1 }} />
+                        <IconButton size="small" sx={{ color: 'white' }}
+                            onClick={() => router.push('/student/practice/letter')}>
+                            <ArrowBack sx={{ fontSize: 16 }} />
+                        </IconButton>
+                    </Box>
                 </Box>
             </Box>
-
-            {/* ── Status Bar ── */}
-            <Box sx={{ bgcolor: '#2b579a', height: 32, px: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'white', flexShrink: 0 }}>
-                <Box sx={{ display: 'flex', gap: 3, alignItems: 'center' }}>
-                    <Typography sx={{ fontSize: 11, fontWeight: 600 }}>WORD COUNT: {liveWords}</Typography>
-                    <Typography sx={{ fontSize: 11, fontWeight: 600 }}>WPM: {liveWpm}</Typography>
-                    <Typography sx={{ fontSize: 11, fontWeight: 600 }}>TIME: {timeStr}</Typography>
-                </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Button
-                        size="small"
-                        variant="contained"
-                        onClick={() => finishSession(content, elapsed || 1)}
-                        sx={{ bgcolor: '#ffffff', color: '#2b579a', '&:hover': { bgcolor: '#f0f0f0' }, textTransform: 'none', fontWeight: 700, fontSize: 11, height: 22 }}
-                    >
-                        Submit Work
-                    </Button>
-                    <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.3)', my: 1 }} />
-                    <IconButton size="small" sx={{ color: 'white' }} onClick={() => router.push('/student/practice/letter')}><ArrowBack sx={{ fontSize: 16 }} /></IconButton>
-                </Box>
-            </Box>
-
-            <style>{`.tox-promotion { display: none !important; }`}</style>
-        </Box>
+        </>
     );
 }
