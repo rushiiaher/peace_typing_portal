@@ -8,6 +8,24 @@ import {
     Article, GridView, OpenInFull, ZoomIn, Search
 } from '@mui/icons-material';
 import { Editor } from '@tinymce/tinymce-react';
+import 'tinymce/tinymce';
+import 'tinymce/icons/default';
+import 'tinymce/themes/silver';
+import 'tinymce/skins/ui/oxide/skin.min.css';
+import 'tinymce/plugins/advlist';
+import 'tinymce/plugins/autolink';
+import 'tinymce/plugins/lists';
+import 'tinymce/plugins/link';
+import 'tinymce/plugins/charmap';
+import 'tinymce/plugins/preview';
+import 'tinymce/plugins/anchor';
+import 'tinymce/plugins/searchreplace';
+import 'tinymce/plugins/visualblocks';
+import 'tinymce/plugins/fullscreen';
+import 'tinymce/plugins/insertdatetime';
+import 'tinymce/plugins/table';
+import 'tinymce/plugins/help';
+import 'tinymce/plugins/wordcount';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -382,13 +400,13 @@ export default function LetterPracticeSession() {
                     position: 'relative'
                 }}>
                     <Editor
-                        apiKey={process.env.NEXT_PUBLIC_TINYMCE_API_KEY}
+                        licenseKey="gpl"
                         value={content}
                         onEditorChange={handleEditorChange}
                         init={{
                             height: '100%',
                             width: '100%',
-                            menubar: true, // Menubar should be horizontal by default
+                            menubar: true,
                             plugins: [
                                 'advlist', 'autolink', 'lists', 'link', 'charmap', 'preview',
                                 'anchor', 'searchreplace', 'visualblocks', 'fullscreen',
