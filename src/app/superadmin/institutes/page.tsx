@@ -6,7 +6,8 @@ import {
   TextField, Switch, FormControlLabel, Alert, Snackbar, Stack, Chip, Paper, Tooltip, Divider,
 } from '@mui/material';
 import { DataGrid, GridColDef, GridActionsCellItem, GridRowParams } from '@mui/x-data-grid';
-import { Add, EditOutlined, DeleteOutline, Refresh } from '@mui/icons-material';
+import { Add, EditOutlined, DeleteOutline, Refresh, Search } from '@mui/icons-material';
+import InputAdornment from '@mui/material/InputAdornment';
 import AdminLayout from '../../components/AdminLayout';
 import { superAdminMenuItems } from '../../components/menuItems';
 import { createClient } from '../../../utils/supabase/client';
@@ -34,6 +35,7 @@ const EMPTY = {
 export default function InstituteManagement() {
   const [institutes, setInstitutes] = useState<Institute[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -130,6 +132,20 @@ export default function InstituteManagement() {
     else { const j = await res.json(); showSnackbar(j.error, 'error'); }
   };
 
+  const filteredInstitutes = searchQuery.trim()
+    ? institutes.filter(inst => {
+        const q = searchQuery.toLowerCase();
+        return (
+          inst.name?.toLowerCase().includes(q) ||
+          inst.code?.toLowerCase().includes(q) ||
+          inst.city?.toLowerCase().includes(q) ||
+          inst.contact_person?.toLowerCase().includes(q) ||
+          inst.email?.toLowerCase().includes(q) ||
+          inst.phone?.toLowerCase().includes(q)
+        );
+      })
+    : institutes;
+
   const columns: GridColDef[] = [
     { field: 'code', headerName: 'Code', width: 110 },
     { field: 'name', headerName: 'Institute Name', width: 210 },
@@ -171,8 +187,26 @@ export default function InstituteManagement() {
         </Stack>
       </Box>
 
+      <Box sx={{ mb: 2 }}>
+        <TextField
+          id="institute-search"
+          placeholder="Search by name, code, city, contact, email, phone…"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          size="small"
+          fullWidth
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Search fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Box>
+
       <Paper variant="outlined">
-        <DataGrid rows={institutes} columns={columns} autoHeight loading={loading} getRowId={r => r.id}
+        <DataGrid rows={filteredInstitutes} columns={columns} autoHeight loading={loading} getRowId={r => r.id}
           pageSizeOptions={[10, 25, 100]} initialState={{ pagination: { paginationModel: { pageSize: 25 } } }} />
       </Paper>
 
