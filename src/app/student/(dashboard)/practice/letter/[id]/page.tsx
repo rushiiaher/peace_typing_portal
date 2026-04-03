@@ -1,14 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, MutableRefObject } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Box, Typography, CircularProgress, Alert, Button, IconButton, Divider, Select, MenuItem } from '@mui/material';
+import { Box, Typography, CircularProgress, Alert, Button, IconButton, Divider } from '@mui/material';
 import {
-    ArrowBack, Replay, CheckCircle,
-    FormatBold, FormatItalic, FormatUnderlined,
-    FormatAlignLeft, FormatAlignCenter, FormatAlignRight, FormatAlignJustify,
-    Undo, Redo,
+    ArrowBack, Replay, CheckCircle, Save, Undo, Redo,
+    Article, GridView, OpenInFull, ZoomIn, Search
 } from '@mui/icons-material';
+import { Editor } from '@tinymce/tinymce-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -71,13 +70,14 @@ function buildExpectedText(p: LetterParts): string {
     return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-// ─── Left pane: formatted letter renderer ─────────────────────────────────────
+// ─── Left pane: formatted letter renderer ────────────────────────────────────
 
 function LetterPage({ p, isMarathi }: { p: LetterParts; isMarathi: boolean }) {
     const ff = isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : 'Calibri, "Segoe UI", sans-serif';
     const fs = isMarathi ? '16pt' : '11pt';
     return (
         <div style={{ fontFamily: ff, fontSize: fs, lineHeight: 1.6, color: '#111' }}>
+            {/* Letterhead */}
             {p.letterhead && (
                 <div style={{ textAlign: 'center', marginBottom: 12 }}>
                     {p.letterhead.split('\n').map((line, i) => (
@@ -88,6 +88,7 @@ function LetterPage({ p, isMarathi }: { p: LetterParts; isMarathi: boolean }) {
                     ))}
                 </div>
             )}
+            {/* Sender address */}
             {p.sender_address && (
                 <div style={{ textAlign: 'center', marginBottom: 20 }}>
                     {p.sender_address.split('\n').map((line, i) => (
@@ -95,12 +96,14 @@ function LetterPage({ p, isMarathi }: { p: LetterParts; isMarathi: boolean }) {
                     ))}
                 </div>
             )}
+            {/* Ref + Date */}
             {(p.ref_number || p.date) && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
                     {p.ref_number && <span style={{ fontWeight: 'bold' }}>Ref. No : {p.ref_number}</span>}
                     {p.date && <span style={{ fontWeight: 'bold' }}>Date : {p.date}</span>}
                 </div>
             )}
+            {/* Inside address */}
             <div style={{ marginBottom: 4, fontWeight: 'bold' }}>To,</div>
             {p.receiver_address && (
                 <div style={{ marginBottom: 20 }}>
@@ -109,6 +112,7 @@ function LetterPage({ p, isMarathi }: { p: LetterParts; isMarathi: boolean }) {
                     ))}
                 </div>
             )}
+            {/* Subject */}
             {p.subject && (
                 <div style={{ fontWeight: 'bold', textDecoration: 'underline', marginBottom: 4, textAlign: 'center' }}>
                     Subject : {p.subject}
@@ -119,7 +123,9 @@ function LetterPage({ p, isMarathi }: { p: LetterParts; isMarathi: boolean }) {
                     Reference : {p.reference_line}
                 </div>
             )}
+            {/* Salutation */}
             {p.salutation && <div style={{ marginBottom: 12 }}>{p.salutation}</div>}
+            {/* Body paragraphs */}
             {[p.body_para_1, p.body_para_2, p.body_para_3].map((para, i) =>
                 para ? (
                     <div key={i} style={{
@@ -128,9 +134,11 @@ function LetterPage({ p, isMarathi }: { p: LetterParts; isMarathi: boolean }) {
                     }}>{para}</div>
                 ) : null
             )}
+            {/* Complimentary close */}
             {p.complimentary_close && (
                 <div style={{ marginBottom: 8 }}>{p.complimentary_close}</div>
             )}
+            {/* Subscription + designation */}
             {(p.subscription || p.designation) && (
                 <Box sx={{ mt: 4, textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                     {p.subscription && <div style={{ fontWeight: 'bold' }}>{p.subscription}</div>}
@@ -138,156 +146,11 @@ function LetterPage({ p, isMarathi }: { p: LetterParts; isMarathi: boolean }) {
                     {p.designation && <div style={{ fontWeight: 'bold' }}>{p.designation}</div>}
                 </Box>
             )}
+            {/* Enclosure */}
             {p.enclosure && (
                 <div style={{ marginTop: 20, fontWeight: 'bold' }}>Encl. : {p.enclosure}</div>
             )}
         </div>
-    );
-}
-
-// ─── Toolbar button ────────────────────────────────────────────────────────────
-
-function ToolbarBtn({ title, onClick, children }: { title: string; onClick: () => void; children: React.ReactNode }) {
-    return (
-        <IconButton
-            size="small"
-            title={title}
-            onMouseDown={e => { e.preventDefault(); onClick(); }}
-            sx={{
-                borderRadius: 1, width: 28, height: 28, color: '#333',
-                '&:hover': { bgcolor: 'rgba(0,0,0,0.08)' },
-            }}
-        >
-            {children}
-        </IconButton>
-    );
-}
-
-// ─── Word-like editor (no TinyMCE, no API key needed) ────────────────────────
-
-function WordEditor({
-    isMarathi,
-    onChange,
-    disabled,
-    editorRef,
-}: {
-    isMarathi: boolean;
-    onChange: (html: string) => void;
-    disabled: boolean;
-    editorRef: MutableRefObject<HTMLDivElement | null>;
-}) {
-    const [fontFamily, setFontFamily] = useState(isMarathi ? '"Kruti Dev 010"' : 'Calibri');
-    const [fontSize, setFontSize] = useState(isMarathi ? '4' : '3'); // execCommand fontSize 1-7
-
-    const exec = (cmd: string, value?: string) => {
-        editorRef.current?.focus();
-        document.execCommand(cmd, false, value);
-        // notify parent of html change
-        onChange(editorRef.current?.innerHTML ?? '');
-    };
-
-    const fonts = isMarathi
-        ? ['"Kruti Dev 010"', '"Shivaji01"', 'Arial']
-        : ['Calibri', 'Times New Roman', 'Arial', 'Georgia', 'Courier New'];
-
-    const sizes = [
-        { label: '8pt', val: '1' },
-        { label: '10pt', val: '2' },
-        { label: '11pt', val: '3' },
-        { label: '12pt', val: '4' },
-        { label: '14pt', val: '5' },
-        { label: '18pt', val: '6' },
-        { label: '24pt', val: '7' },
-    ];
-
-    return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: 'white' }}>
-            {/* ── Toolbar ── */}
-            <Box sx={{
-                display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.3,
-                px: 1, py: 0.5, borderBottom: '1px solid #d1d5db',
-                bgcolor: '#f3f4f6', minHeight: 40, flexShrink: 0,
-            }}>
-                {/* Undo / Redo */}
-                <ToolbarBtn title="Undo (Ctrl+Z)" onClick={() => exec('undo')}><Undo sx={{ fontSize: 16 }} /></ToolbarBtn>
-                <ToolbarBtn title="Redo (Ctrl+Y)" onClick={() => exec('redo')}><Redo sx={{ fontSize: 16 }} /></ToolbarBtn>
-
-                <Box sx={{ width: 1, bgcolor: '#d1d5db', height: 20, mx: 0.3 }} />
-
-                {/* Font family */}
-                <Select
-                    size="small"
-                    value={fontFamily}
-                    onChange={e => { setFontFamily(e.target.value); exec('fontName', e.target.value); }}
-                    sx={{ height: 26, fontSize: 12, minWidth: 120, '.MuiSelect-select': { py: 0.3, px: 1 } }}
-                    onMouseDown={e => e.stopPropagation()}
-                >
-                    {fonts.map(f => <MenuItem key={f} value={f} sx={{ fontSize: 12, fontFamily: f }}>{f.replace(/"/g, '')}</MenuItem>)}
-                </Select>
-
-                {/* Font size */}
-                <Select
-                    size="small"
-                    value={fontSize}
-                    onChange={e => { setFontSize(e.target.value); exec('fontSize', e.target.value); }}
-                    sx={{ height: 26, fontSize: 12, minWidth: 60, '.MuiSelect-select': { py: 0.3, px: 1 } }}
-                    onMouseDown={e => e.stopPropagation()}
-                >
-                    {sizes.map(s => <MenuItem key={s.val} value={s.val} sx={{ fontSize: 12 }}>{s.label}</MenuItem>)}
-                </Select>
-
-                <Box sx={{ width: 1, bgcolor: '#d1d5db', height: 20, mx: 0.3 }} />
-
-                {/* Format */}
-                <ToolbarBtn title="Bold (Ctrl+B)" onClick={() => exec('bold')}><FormatBold sx={{ fontSize: 16 }} /></ToolbarBtn>
-                <ToolbarBtn title="Italic (Ctrl+I)" onClick={() => exec('italic')}><FormatItalic sx={{ fontSize: 16 }} /></ToolbarBtn>
-                <ToolbarBtn title="Underline (Ctrl+U)" onClick={() => exec('underline')}><FormatUnderlined sx={{ fontSize: 16 }} /></ToolbarBtn>
-
-                <Box sx={{ width: 1, bgcolor: '#d1d5db', height: 20, mx: 0.3 }} />
-
-                {/* Align */}
-                <ToolbarBtn title="Align Left" onClick={() => exec('justifyLeft')}><FormatAlignLeft sx={{ fontSize: 16 }} /></ToolbarBtn>
-                <ToolbarBtn title="Align Center" onClick={() => exec('justifyCenter')}><FormatAlignCenter sx={{ fontSize: 16 }} /></ToolbarBtn>
-                <ToolbarBtn title="Align Right" onClick={() => exec('justifyRight')}><FormatAlignRight sx={{ fontSize: 16 }} /></ToolbarBtn>
-                <ToolbarBtn title="Justify" onClick={() => exec('justifyFull')}><FormatAlignJustify sx={{ fontSize: 16 }} /></ToolbarBtn>
-            </Box>
-
-            {/* ── Page Canvas ── */}
-            <Box sx={{
-                flex: 1, overflow: 'auto', bgcolor: '#808080',
-                display: 'flex', flexDirection: 'column', alignItems: 'center',
-                py: 4,
-            }}>
-                <Box
-                    ref={editorRef}
-                    contentEditable={!disabled}
-                    suppressContentEditableWarning
-                    onInput={() => onChange(editorRef.current?.innerHTML ?? '')}
-                    spellCheck={false}
-                    data-placeholder="Start typing your letter here…"
-                    sx={{
-                        width: '100%',
-                        maxWidth: '560px',
-                        minHeight: '794px',
-                        bgcolor: 'white',
-                        p: '60px',
-                        boxShadow: '0 15px 50px rgba(0,0,0,0.6)',
-                        outline: 'none',
-                        fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : 'Calibri, "Segoe UI", sans-serif',
-                        fontSize: isMarathi ? '16pt' : '11pt',
-                        lineHeight: 1.5,
-                        color: '#111',
-                        cursor: disabled ? 'not-allowed' : 'text',
-                        opacity: disabled ? 0.7 : 1,
-                        '&:empty:before': {
-                            content: 'attr(data-placeholder)',
-                            color: '#9ca3af',
-                            pointerEvents: 'none',
-                        },
-                    }}
-                />
-            </Box>
-        </Box>
     );
 }
 
@@ -315,7 +178,6 @@ export default function LetterPracticeSession() {
 
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const startTimeRef = useRef<number>(0);
-    const editorRef = useRef<HTMLDivElement | null>(null);
 
     // ── Fetch ──────────────────────────────────────────────────────────────────
 
@@ -345,6 +207,7 @@ export default function LetterPracticeSession() {
         if (timerRef.current) clearInterval(timerRef.current);
         setSessionState('finished');
 
+        // Helper to normalize text for comparison
         const normalize = (t: string) => t.replace(/\s+/g, ' ').trim();
 
         const tempDiv = document.createElement('div');
@@ -360,8 +223,11 @@ export default function LetterPracticeSession() {
             if (typedPlain[i] !== expectedPlain[i]) mistakes++;
         }
 
+        // Calculate WPM based on actual content typed
         const words = typedPlain.split(' ').filter(Boolean).length;
         const wpm = Math.round(words / (secs / 60 || 0.001));
+
+        // Accuracy = (Correct / Total Typed)
         const accuracy = typedLen > 0
             ? Math.max(0, Math.round(((typedLen - mistakes) / typedLen) * 100))
             : 100;
@@ -385,7 +251,7 @@ export default function LetterPracticeSession() {
     const handleEditorChange = (newContent: string) => {
         if (sessionState === 'finished') return;
 
-        if (sessionState === 'idle' && newContent.replace(/<[^>]*>/g, '').length > 0) {
+        if (sessionState === 'idle' && newContent.length > 0) {
             setSessionState('active');
             startTimeRef.current = Date.now();
             timerRef.current = setInterval(() => {
@@ -404,7 +270,6 @@ export default function LetterPracticeSession() {
         setContent('');
         setElapsed(0);
         setFinalWpm(0); setFinalAccuracy(0); setFinalMistakes(0);
-        if (editorRef.current) editorRef.current.innerHTML = '';
     };
 
     useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
@@ -424,9 +289,7 @@ export default function LetterPracticeSession() {
 
     // ── Result screen ──────────────────────────────────────────────────────────
 
-    const isFinished: boolean = sessionState === 'finished';
-
-    if (isFinished) {
+    if (sessionState === 'finished') {
         const passed = finalAccuracy >= 80;
         return (
             <Box sx={{
@@ -509,19 +372,51 @@ export default function LetterPracticeSession() {
                     </Box>
                 </Box>
 
-                {/* Right: Word-like Editor (50% Width) */}
+                {/* Right: TinyMCE Editor Workspace (50% Width) */}
                 <Box sx={{
                     width: '50%',
                     display: 'flex',
                     flexDirection: 'column',
+                    bgcolor: 'white', // Changed to white for seamless look
                     overflow: 'hidden',
                     position: 'relative'
                 }}>
-                    <WordEditor
-                        isMarathi={isMarathi}
-                        onChange={handleEditorChange}
-                        disabled={isFinished}
-                        editorRef={editorRef as MutableRefObject<HTMLDivElement | null>}
+                    <Editor
+                        apiKey={process.env.NEXT_PUBLIC_TINYMCE_API_KEY}
+                        value={content}
+                        onEditorChange={handleEditorChange}
+                        init={{
+                            height: '100%',
+                            width: '100%',
+                            menubar: true, // Menubar should be horizontal by default
+                            plugins: [
+                                'advlist', 'autolink', 'lists', 'link', 'charmap', 'preview',
+                                'anchor', 'searchreplace', 'visualblocks', 'fullscreen',
+                                'insertdatetime', 'table', 'help', 'wordcount'
+                            ],
+                            toolbar: 'undo redo | blocks fontfamily fontsize | ' +
+                                'bold italic underline | alignleft aligncenter ' +
+                                'alignright alignjustify | table | bullist numlist outdent indent | ' +
+                                'removeformat | help',
+                            table_default_attributes: { border: '0' },
+                            table_default_styles: { 'border-collapse': 'collapse', 'width': '100%' },
+                            table_appearance_options: false,
+                            content_style: `
+                                body {
+                                    font-family: ${isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : 'Calibri, "Segoe UI", sans-serif'};
+                                    font-size: ${isMarathi ? '16pt' : '11pt'};
+                                    padding: 50px;
+                                    margin: 0;
+                                    line-height: 1.5;
+                                }
+                            `,
+                            branding: false,
+                            statusbar: true,
+                            elementpath: false,
+                            promotion: false,
+                            help_accessibility: false,
+                            skin: 'oxide',
+                        }}
                     />
                 </Box>
             </Box>
@@ -532,11 +427,6 @@ export default function LetterPracticeSession() {
                     <Typography sx={{ fontSize: 11, fontWeight: 600 }}>WORD COUNT: {liveWords}</Typography>
                     <Typography sx={{ fontSize: 11, fontWeight: 600 }}>WPM: {liveWpm}</Typography>
                     <Typography sx={{ fontSize: 11, fontWeight: 600 }}>TIME: {timeStr}</Typography>
-                    {sessionState === 'idle' && (
-                        <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>
-                            ⌨️ Start typing to begin the timer
-                        </Typography>
-                    )}
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                     <Button
@@ -551,6 +441,8 @@ export default function LetterPracticeSession() {
                     <IconButton size="small" sx={{ color: 'white' }} onClick={() => router.push('/student/practice/letter')}><ArrowBack sx={{ fontSize: 16 }} /></IconButton>
                 </Box>
             </Box>
+
+            <style>{`.tox-promotion { display: none !important; }`}</style>
         </Box>
     );
 }
