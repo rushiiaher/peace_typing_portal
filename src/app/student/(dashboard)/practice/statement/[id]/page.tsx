@@ -131,7 +131,7 @@ function ExcelGrid({
                             else align = 'right';
                         }
 
-                        return (
+                        const cellBox = (
                             <Box
                                 key={`${r}-${c}`}
                                 onClick={() => setActiveCell?.([r, c])}
@@ -176,10 +176,32 @@ function ExcelGrid({
                                         }}
                                     />
                                 ) : (
-                                    <span style={{ width: '100%', textAlign: align || 'left' }}>{cellVal}</span>
+                                    <span style={{
+                                        width: '100%',
+                                        textAlign: align || 'left',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap',
+                                        display: 'block',
+                                    }}>{cellVal}</span>
                                 )}
                             </Box>
                         );
+
+                        // Wrap reference cells in a Tooltip so students can read
+                        // the full content of narrow columns on hover.
+                        return isReference && cellVal ? (
+                            <Tooltip
+                                key={`${r}-${c}`}
+                                title={cellVal}
+                                placement="top"
+                                arrow
+                                enterDelay={300}
+                                PopperProps={{ style: { zIndex: 1500 } }}
+                            >
+                                {cellBox}
+                            </Tooltip>
+                        ) : cellBox;
                     })}
                 </Box>
             ))}
