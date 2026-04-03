@@ -20,6 +20,9 @@
 # production
 /build
 
+# TinyMCE static assets (auto-copied from node_modules at build time)
+/public/tinymce
+
 # misc
 .DS_Store
 *.pem
