@@ -382,6 +382,7 @@ export default function LetterPracticeSession() {
                     position: 'relative'
                 }}>
                     <Editor
+                        tinymceScriptSrc="/tinymce/tinymce.min.js"
                         licenseKey="gpl"
                         value={content}
                         onEditorChange={handleEditorChange}
