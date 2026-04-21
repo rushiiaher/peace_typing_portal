@@ -118,7 +118,7 @@ export default function AdminLayout({ children, menuItems, title }: AdminLayoutP
         <Box sx={{ overflowX: 'hidden', overflowY: 'auto', pt: 0.5, flexGrow: 1, '&::-webkit-scrollbar': { width: '4px' }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(0,0,0,0.1)', borderRadius: '4px' } }}>
           <List dense>
             {menuItems.map((item) => {
-              const isActive = pathname === item.href;
+              const isActive = pathname === item.href || (item.href !== '/superadmin/dashboard' && item.href !== '/institute/dashboard' && item.href !== '/student/dashboard' && pathname.startsWith(item.href));
               return (
                 <ListItem key={item.text} disablePadding sx={{ px: 1, mb: 0.5 }}>
                   <Tooltip title={!open ? item.text : ''} placement="right">
