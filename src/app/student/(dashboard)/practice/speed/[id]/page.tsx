@@ -260,7 +260,13 @@ export default function SpeedPracticeSession() {
             {/* Workspace */}
             <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', bgcolor: '#e1dfdd' }}>
                 <Box sx={{ flex: 1, overflow: 'auto', p: 4, display: 'flex', justifyContent: 'center', borderRight: '1px solid #c8c8c8' }}>
-                    <Box sx={{ bgcolor: 'white', width: 560, minHeight: 794, p: '72px', boxShadow: '0 0 10px rgba(0,0,0,0.1)', fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : '"Times New Roman", Times, serif', fontSize: isMarathi ? 22 : 14, lineHeight: 1.9, textAlign: 'justify', whiteSpace: 'pre-wrap' }}>
+                    <Box
+                        sx={{ bgcolor: 'white', width: 560, minHeight: 794, p: '72px', boxShadow: '0 0 10px rgba(0,0,0,0.1)', fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : '"Times New Roman", Times, serif', fontSize: isMarathi ? 22 : 14, lineHeight: 1.9, textAlign: 'justify', whiteSpace: 'pre-wrap', userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none' }}
+                        onCopy={(e) => e.preventDefault()}
+                        onCut={(e) => e.preventDefault()}
+                        onContextMenu={(e) => e.preventDefault()}
+                        onDragStart={(e) => e.preventDefault()}
+                    >
                         {passage.passage_text}
                     </Box>
                 </Box>
@@ -272,7 +278,7 @@ export default function SpeedPracticeSession() {
                             ))}
                             <span style={{ display: 'inline-block', width: 2, height: '1.2em', backgroundColor: '#2563eb', marginLeft: 1, verticalAlign: 'text-bottom', animation: 'blink 1s step-end infinite' }} />
                         </Box>
-                        <textarea ref={textareaRef} value={typedText} onChange={handleTyping} autoFocus spellCheck={false} style={{ position: 'absolute', top: '72px', left: '72px', width: 'calc(100% - 144px)', minHeight: 'calc(100% - 144px)', fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : '"Times New Roman", Times, serif', fontSize: isMarathi ? 22 : 14, lineHeight: 1.9, color: 'transparent', caretColor: 'transparent', background: 'transparent', border: 'none', outline: 'none', resize: 'none', zIndex: 3, whiteSpace: 'pre-wrap', textAlign: 'justify', overflow: 'hidden' }} />
+                        <textarea ref={textareaRef} value={typedText} onChange={handleTyping} autoFocus spellCheck={false} onPaste={(e) => e.preventDefault()} onCopy={(e) => e.preventDefault()} onCut={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} style={{ position: 'absolute', top: '72px', left: '72px', width: 'calc(100% - 144px)', minHeight: 'calc(100% - 144px)', fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : '"Times New Roman", Times, serif', fontSize: isMarathi ? 22 : 14, lineHeight: 1.9, color: 'transparent', caretColor: 'transparent', background: 'transparent', border: 'none', outline: 'none', resize: 'none', zIndex: 3, whiteSpace: 'pre-wrap', textAlign: 'justify', overflow: 'hidden' }} />
                         {sessionState === 'idle' && typedText.length === 0 && (
                             <Box sx={{ position: 'absolute', inset: 0, zIndex: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(255,255,255,0.9)', cursor: 'text' }} onClick={() => textareaRef.current?.focus()}>
                                 <Typography sx={{ fontWeight: 600, color: '#2b579a', mb: 1 }}>Click to Start Typing</Typography>

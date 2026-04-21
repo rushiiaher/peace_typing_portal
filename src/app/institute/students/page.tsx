@@ -5,13 +5,14 @@ import {
   Box, Button, Typography, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, MenuItem, Chip, Tooltip, Paper,
   Snackbar, Alert, Divider, Stack, Skeleton, InputAdornment,
-  IconButton, Avatar, Grid,
+  IconButton, Avatar, Grid, LinearProgress,
 } from '@mui/material';
 import { DataGrid, GridColDef, GridActionsCellItem, GridRowParams } from '@mui/x-data-grid';
 import {
   PersonAdd, EditOutlined, DeleteOutline, Search, Refresh,
   Visibility, VisibilityOff, CameraAlt, AccountCircle, School,
-  MenuBook, Payment
+  MenuBook, Payment, UploadFile, CheckCircle, Warning, ZoomIn,
+  PictureAsPdf, Close,
 } from '@mui/icons-material';
 import AdminLayout from '../../components/AdminLayout';
 import { instituteAdminMenuItems } from '../../components/menuItems';
@@ -25,9 +26,23 @@ interface Student {
   photo_url: string | null; aadhar_card_no: string; mother_name: string;
   guardian_name: string; guardian_phone: string;
   date_of_birth: string; blood_group: string;
+  prerequisite_cert_url: string | null;
 }
-interface Course { id: string; name: string; code: string; }
+interface Course {
+  id: string; name: string; code: string;
+  passing_criteria_wpm: number;
+}
 interface Batch { id: string; batch_name: string; batch_code: string; course_id: string; }
+
+/* ─── Helper: does a course need a prerequisite cert? ──────────────────── */
+const CERT_WPM_THRESHOLD = 40;
+function courseNeedsCert(courses: Course[], courseId: string): boolean {
+  const c = courses.find(x => x.id === courseId);
+  return !!c && c.passing_criteria_wpm >= CERT_WPM_THRESHOLD;
+}
+function courseWpm(courses: Course[], courseId: string): number {
+  return courses.find(x => x.id === courseId)?.passing_criteria_wpm ?? 0;
+}
 
 /* ─── Empty form state ───────────────────────────────────────────────────── */
 const EMPTY_FORM = {
@@ -63,6 +78,176 @@ function SectionHead({ icon, label }: { icon: React.ReactNode; label: string }) 
   );
 }
 
+/* ─── Certificate Preview Dialog ────────────────────────────────────────── */
+function CertPreviewDialog({
+  open, onClose, url, fileName,
+}: { open: boolean; onClose: () => void; url: string; fileName?: string }) {
+  const isPdf = url?.toLowerCase().includes('.pdf') || url?.toLowerCase().includes('application/pdf');
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3, overflow: 'hidden' } }}>
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: '#1e3a5f', color: 'white', py: 1.5, px: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {isPdf ? <PictureAsPdf /> : <ZoomIn />}
+          <Typography fontWeight={700}>Prerequisite Certificate Preview</Typography>
+        </Box>
+        <IconButton onClick={onClose} sx={{ color: 'white' }}><Close /></IconButton>
+      </DialogTitle>
+      <DialogContent sx={{ p: 0, bgcolor: '#f1f5f9', minHeight: 420, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {isPdf ? (
+          <Box component="embed"
+            src={url}
+            type="application/pdf"
+            sx={{ width: '100%', height: 560, border: 'none', display: 'block' }}
+          />
+        ) : (
+          <Box
+            component="img"
+            src={url}
+            alt="Certificate"
+            sx={{ maxWidth: '100%', maxHeight: 560, objectFit: 'contain', display: 'block', m: 'auto', p: 2 }}
+          />
+        )}
+      </DialogContent>
+      {fileName && (
+        <Box sx={{ px: 3, py: 1.5, bgcolor: 'white', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <PictureAsPdf sx={{ fontSize: 16, color: 'text.secondary' }} />
+          <Typography variant="caption" color="text.secondary">{fileName}</Typography>
+        </Box>
+      )}
+    </Dialog>
+  );
+}
+
+/* ─── Certificate Upload Zone ──────────────────────────────────────────── */
+function CertUploadZone({
+  wpmRequired,
+  certFile,
+  certUrl,
+  onFileChange,
+  onPreview,
+  onRemove,
+  existingCertUrl,
+}: {
+  wpmRequired: number;
+  certFile: File | null;
+  certUrl: string | null;
+  onFileChange: (f: File) => void;
+  onPreview: () => void;
+  onRemove: () => void;
+  existingCertUrl?: string | null;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const hasAnyCert = !!certFile || !!certUrl || !!existingCertUrl;
+
+  return (
+    <Box sx={{
+      mt: 1,
+      p: 2.5,
+      border: '2px solid',
+      borderColor: hasAnyCert ? '#16a34a' : '#f59e0b',
+      borderRadius: 2,
+      bgcolor: hasAnyCert ? '#f0fdf4' : '#fffbeb',
+      transition: 'all 0.2s',
+    }}>
+      {/* Header */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+        {hasAnyCert
+          ? <CheckCircle sx={{ color: '#16a34a', fontSize: 20 }} />
+          : <Warning sx={{ color: '#f59e0b', fontSize: 20 }} />}
+        <Typography fontWeight={700} color={hasAnyCert ? '#15803d' : '#b45309'} fontSize={14}>
+          Prerequisite Certificate Required
+        </Typography>
+        <Chip
+          label={`${wpmRequired} WPM Course`}
+          size="small"
+          sx={{
+            bgcolor: '#fef3c7', color: '#92400e', fontWeight: 700,
+            border: '1px solid #fcd34d', fontSize: 11,
+          }}
+        />
+      </Box>
+
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2, lineHeight: 1.6 }}>
+        This course requires a <strong>{wpmRequired} WPM</strong> speed target. The student must have completed a
+        30 WPM or 40 WPM course. Upload their previous course <strong>Completion Certificate</strong> (PDF, JPG, or PNG).
+      </Typography>
+
+      {/* Existing cert from DB */}
+      {existingCertUrl && !certFile && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, p: 1.5, bgcolor: '#dcfce7', borderRadius: 1.5 }}>
+          <CheckCircle sx={{ color: '#16a34a', fontSize: 18 }} />
+          <Typography variant="caption" fontWeight={600} color="success.dark" sx={{ flex: 1 }}>
+            Certificate uploaded previously
+          </Typography>
+          <Button size="small" variant="outlined" color="success" startIcon={<ZoomIn />} onClick={onPreview} sx={{ py: 0.3, fontSize: 11 }}>
+            Preview
+          </Button>
+          <Button size="small" variant="outlined" color="error" onClick={onRemove} sx={{ py: 0.3, fontSize: 11 }}>
+            Replace
+          </Button>
+        </Box>
+      )}
+
+      {/* Newly selected file */}
+      {certFile && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, p: 1.5, bgcolor: '#dcfce7', borderRadius: 1.5 }}>
+          <CheckCircle sx={{ color: '#16a34a', fontSize: 18 }} />
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="caption" fontWeight={600} color="success.dark" noWrap>
+              {certFile.name}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              {(certFile.size / 1024).toFixed(1)} KB
+            </Typography>
+          </Box>
+          <Button size="small" variant="outlined" color="success" startIcon={<ZoomIn />} onClick={onPreview} sx={{ py: 0.3, fontSize: 11 }}>
+            Preview
+          </Button>
+          <Button size="small" variant="outlined" color="error" onClick={onRemove} sx={{ py: 0.3, fontSize: 11 }}>
+            Remove
+          </Button>
+        </Box>
+      )}
+
+      {/* Upload button */}
+      {!certFile && !existingCertUrl && (
+        <Box
+          onClick={() => inputRef.current?.click()}
+          sx={{
+            border: '2px dashed #fcd34d', borderRadius: 2, p: 3,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
+            cursor: 'pointer', bgcolor: 'white',
+            '&:hover': { bgcolor: '#fefce8', borderColor: '#f59e0b' },
+            transition: 'all 0.2s',
+          }}
+        >
+          <UploadFile sx={{ color: '#f59e0b', fontSize: 32 }} />
+          <Typography fontWeight={600} fontSize={13} color="#92400e">Click to upload certificate</Typography>
+          <Typography variant="caption" color="text.secondary">PDF, JPG, PNG, WebP — max 5 MB</Typography>
+        </Box>
+      )}
+
+      {certFile && (
+        <Button size="small" variant="text" startIcon={<UploadFile />} onClick={() => inputRef.current?.click()} sx={{ fontSize: 12 }}>
+          Change certificate
+        </Button>
+      )}
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,.pdf"
+        style={{ display: 'none' }}
+        onChange={e => {
+          const f = e.target.files?.[0];
+          if (f) onFileChange(f);
+          e.target.value = '';
+        }}
+      />
+    </Box>
+  );
+}
+
 /* ─── Page ───────────────────────────────────────────────────────────────── */
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
@@ -80,6 +265,13 @@ export default function StudentsPage() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
 
+  /* Create — cert */
+  const [createCertFile, setCreateCertFile] = useState<File | null>(null);
+  const [createCertObjectUrl, setCreateCertObjectUrl] = useState<string | null>(null);
+  const [certPreviewOpen, setCertPreviewOpen] = useState(false);
+  const [certPreviewUrl, setCertPreviewUrl] = useState('');
+  const [certPreviewFileName, setCertPreviewFileName] = useState('');
+
   /* Edit dialog */
   const [editOpen, setEditOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
@@ -89,6 +281,10 @@ export default function StudentsPage() {
   const editPhotoRef = useRef<HTMLInputElement>(null);
   const [editPhotoPreview, setEditPhotoPreview] = useState<string | null>(null);
   const [editPhotoFile, setEditPhotoFile] = useState<File | null>(null);
+
+  /* Edit — cert */
+  const [editCertFile, setEditCertFile] = useState<File | null>(null);
+  const [editCertObjectUrl, setEditCertObjectUrl] = useState<string | null>(null);
 
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>
     ({ open: false, message: '', severity: 'success' });
@@ -115,7 +311,7 @@ export default function StudentsPage() {
   const filteredBatches = (courseId: string) =>
     allBatches.filter(b => !courseId || b.course_id === courseId);
 
-  /* Upload helper — sends to Supabase Storage, returns public URL */
+  /* Upload helpers */
   const uploadPhotoToStorage = async (file: File, studentId?: string): Promise<string> => {
     const fd = new FormData();
     fd.append('file', file);
@@ -126,7 +322,17 @@ export default function StudentsPage() {
     return j.url as string;
   };
 
-  /* Photo change — just store file + show preview; actual upload happens on save */
+  const uploadCertToStorage = async (file: File, studentId: string): Promise<string> => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('student_id', studentId);
+    const res = await fetch('/api/institute/students/upload-certificate', { method: 'POST', body: fd });
+    const j = await res.json();
+    if (!res.ok) throw new Error(j.error || 'Certificate upload failed');
+    return j.url as string;
+  };
+
+  /* Photo change handlers */
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -136,15 +342,47 @@ export default function StudentsPage() {
     e.target.value = '';
   };
 
+  /* Cert file selection */
+  const handleCreateCertChange = (file: File) => {
+    if (file.size > 5 * 1024 * 1024) { showSnackbar('Certificate must be under 5 MB.', 'error'); return; }
+    if (createCertObjectUrl) URL.revokeObjectURL(createCertObjectUrl);
+    setCreateCertFile(file);
+    setCreateCertObjectUrl(URL.createObjectURL(file));
+  };
+
+  const handleEditCertChange = (file: File) => {
+    if (file.size > 5 * 1024 * 1024) { showSnackbar('Certificate must be under 5 MB.', 'error'); return; }
+    if (editCertObjectUrl) URL.revokeObjectURL(editCertObjectUrl);
+    setEditCertFile(file);
+    setEditCertObjectUrl(URL.createObjectURL(file));
+  };
+
+  /* Open cert preview */
+  const openCertPreview = (url: string, name?: string) => {
+    setCertPreviewUrl(url);
+    setCertPreviewFileName(name ?? '');
+    setCertPreviewOpen(true);
+  };
+
   /* ── Create ── */
   const handleCreate = async () => {
     const { first_name, surname, email, password } = form;
     if (!first_name || !surname) { showSnackbar('First name and surname are required.', 'error'); return; }
     if (!email) { showSnackbar('Email is required.', 'error'); return; }
     if (!password || password.length < 6) { showSnackbar('Password must be at least 6 characters.', 'error'); return; }
+
+    // Client-side cert check
+    if (courseNeedsCert(courses, form.course_id) && !createCertFile) {
+      showSnackbar(
+        `This course requires ${courseWpm(courses, form.course_id)} WPM. Please upload the student's prerequisite completion certificate.`,
+        'error'
+      );
+      return;
+    }
+
     setCreating(true);
     try {
-      // Create student first (no photo_url yet), then upload photo with the real student ID
+      // Create student first (no photo/cert URLs yet)
       const payload = { ...form, is_active: form.is_active === 'true', photo_url: null };
       const res = await fetch('/api/institute/students', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -155,7 +393,7 @@ export default function StudentsPage() {
 
       const studentId: string = json.student?.id;
 
-      // If a photo was selected, upload it and patch photo_url
+      // Upload photo if selected
       if (photoFile && studentId) {
         try {
           const photoUrl = await uploadPhotoToStorage(photoFile, studentId);
@@ -168,8 +406,27 @@ export default function StudentsPage() {
         }
       }
 
+      // Upload certificate if selected and course needs it
+      if (createCertFile && studentId && courseNeedsCert(courses, form.course_id)) {
+        try {
+          const certUrl = await uploadCertToStorage(createCertFile, studentId);
+          await fetch(`/api/institute/students/${studentId}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prerequisite_cert_url: certUrl }),
+          });
+        } catch (certErr: any) {
+          showSnackbar(`Student created but certificate upload failed: ${certErr.message}`, 'error');
+        }
+      }
+
       showSnackbar(`Student created — Roll No: ${json.enrollment_number}`, 'success');
-      setCreateOpen(false); setForm(EMPTY_FORM); setPhotoPreview(null); setPhotoFile(null); fetchAll();
+      setCreateOpen(false);
+      setForm(EMPTY_FORM);
+      setPhotoPreview(null);
+      setPhotoFile(null);
+      setCreateCertFile(null);
+      setCreateCertObjectUrl(null);
+      fetchAll();
     } catch (e: any) { showSnackbar(e.message, 'error'); }
     finally { setCreating(false); }
   };
@@ -177,9 +434,10 @@ export default function StudentsPage() {
   /* ── Edit open ── */
   const openEdit = (row: Student) => {
     setEditingStudent(row);
-    // Show existing stored photo URL as preview (not base64)
     setEditPhotoPreview(row.photo_url ?? null);
     setEditPhotoFile(null);
+    setEditCertFile(null);
+    setEditCertObjectUrl(null);
     setEditForm({
       first_name: row.first_name || row.name.split(' ')[0] || '',
       father_name: row.father_name || '',
@@ -197,7 +455,8 @@ export default function StudentsPage() {
       batch_id: row.batch_id || '',
       photo_url: row.photo_url || '',
     });
-    setShowEditPwd(false); setEditOpen(true);
+    setShowEditPwd(false);
+    setEditOpen(true);
   };
 
   /* ── Edit photo change ── */
@@ -215,29 +474,56 @@ export default function StudentsPage() {
     if (editForm.new_password && editForm.new_password.length < 6) {
       showSnackbar('New password must be at least 6 characters.', 'error'); return;
     }
+
+    // Client-side cert check: course changed to a new high-WPM course AND no cert
+    const courseChanged = editForm.course_id !== editingStudent.course_id;
+    const newCourseNeedsCert = courseNeedsCert(courses, editForm.course_id);
+    const studentAlreadyHasCert = !!editingStudent.prerequisite_cert_url;
+    if (courseChanged && newCourseNeedsCert && !editCertFile && !studentAlreadyHasCert) {
+      showSnackbar(
+        `This course requires ${courseWpm(courses, editForm.course_id)} WPM. Please upload the student's prerequisite completion certificate.`,
+        'error'
+      );
+      return;
+    }
+
     setSaving(true);
     try {
-      // If a new photo file was picked, upload it first
       let finalPhotoUrl = editForm.photo_url || null;
       if (editPhotoFile) {
         finalPhotoUrl = await uploadPhotoToStorage(editPhotoFile, editingStudent.id);
       }
 
+      // Upload new cert if provided
+      let finalCertUrl = editingStudent.prerequisite_cert_url || null;
+      if (editCertFile) {
+        finalCertUrl = await uploadCertToStorage(editCertFile, editingStudent.id);
+      }
+
       const fullName = [editForm.first_name, editForm.father_name, editForm.surname].filter(Boolean).join(' ');
+      const patchBody: any = {
+        ...editForm,
+        name: fullName,
+        is_active: editForm.is_active === 'true',
+        password: editForm.new_password || undefined,
+        photo_url: finalPhotoUrl,
+      };
+      if (finalCertUrl !== editingStudent.prerequisite_cert_url) {
+        patchBody.prerequisite_cert_url = finalCertUrl;
+      }
+
       const res = await fetch(`/api/institute/students/${editingStudent.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...editForm,
-          name: fullName,
-          is_active: editForm.is_active === 'true',
-          password: editForm.new_password || undefined,
-          photo_url: finalPhotoUrl,
-        }),
+        body: JSON.stringify(patchBody),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       showSnackbar('Student updated successfully.', 'success');
-      setEditOpen(false); setEditPhotoFile(null); fetchAll();
+      setEditOpen(false);
+      setEditPhotoFile(null);
+      setEditCertFile(null);
+      setEditCertObjectUrl(null);
+      fetchAll();
     } catch (e: any) { showSnackbar(e.message, 'error'); }
     finally { setSaving(false); }
   };
@@ -275,6 +561,38 @@ export default function StudentsPage() {
     {
       field: 'is_active', headerName: 'Status', width: 95,
       renderCell: p => <Chip size="small" label={p.value ? 'Active' : 'Inactive'} color={p.value ? 'success' : 'default'} variant="outlined" />,
+    },
+    {
+      field: 'prerequisite_cert_url', headerName: 'Cert', width: 110, sortable: false,
+      renderCell: (p) => {
+        const needsCert = courseNeedsCert(courses, p.row.course_id);
+        if (!needsCert) return <Chip size="small" label="N/A" sx={{ fontSize: 10, bgcolor: '#f1f5f9', color: '#64748b' }} />;
+        if (p.value) {
+          return (
+            <Tooltip title="Click to preview certificate">
+              <Chip
+                size="small"
+                icon={<CheckCircle sx={{ fontSize: '14px !important' }} />}
+                label="Uploaded"
+                color="success"
+                variant="outlined"
+                onClick={() => openCertPreview(p.value, `${p.row.name} Certificate`)}
+                sx={{ cursor: 'pointer', fontSize: 10 }}
+              />
+            </Tooltip>
+          );
+        }
+        return (
+          <Chip
+            size="small"
+            icon={<Warning sx={{ fontSize: '14px !important' }} />}
+            label="Missing"
+            color="error"
+            variant="outlined"
+            sx={{ fontSize: 10 }}
+          />
+        );
+      },
     },
     {
       field: 'actions', type: 'actions', headerName: 'Actions', width: 90,
@@ -315,7 +633,7 @@ export default function StudentsPage() {
             <Button variant="outlined" size="small" startIcon={<Refresh />} onClick={fetchAll}>Refresh</Button>
           </Tooltip>
           <Button variant="contained" startIcon={<PersonAdd />}
-            onClick={() => { setForm(EMPTY_FORM); setPhotoPreview(null); setShowPwd(false); setCreateOpen(true); }}>
+            onClick={() => { setForm(EMPTY_FORM); setPhotoPreview(null); setShowPwd(false); setCreateCertFile(null); setCreateCertObjectUrl(null); setCreateOpen(true); }}>
             Add Student
           </Button>
         </Stack>
@@ -352,7 +670,6 @@ export default function StudentsPage() {
             {/* Photo column */}
             <Grid item xs={12} sm="auto">
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                {/* 7:9 passport-ratio photo box */}
                 <Box
                   onClick={() => photoRef.current?.click()}
                   sx={{
@@ -498,7 +815,18 @@ export default function StudentsPage() {
                 value={form.course_id}
                 onChange={e => setForm({ ...form, course_id: e.target.value, batch_id: '' })}>
                 <MenuItem value=""><em>Select course first</em></MenuItem>
-                {courses.map(c => <MenuItem key={c.id} value={c.id}>{c.name} ({c.code})</MenuItem>)}
+                {courses.map(c => (
+                  <MenuItem key={c.id} value={c.id}>
+                    {c.name} ({c.code})
+                    {c.passing_criteria_wpm >= CERT_WPM_THRESHOLD && (
+                      <Chip
+                        label={`${c.passing_criteria_wpm} WPM`}
+                        size="small"
+                        sx={{ ml: 1, fontSize: 10, bgcolor: '#fef3c7', color: '#92400e', height: 18 }}
+                      />
+                    )}
+                  </MenuItem>
+                ))}
               </TextField>
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -513,6 +841,22 @@ export default function StudentsPage() {
                 )}
               </TextField>
             </Grid>
+
+            {/* ── Prerequisite Certificate Zone ── */}
+            {courseNeedsCert(courses, form.course_id) && (
+              <Grid item xs={12}>
+                <CertUploadZone
+                  wpmRequired={courseWpm(courses, form.course_id)}
+                  certFile={createCertFile}
+                  certUrl={createCertObjectUrl}
+                  onFileChange={handleCreateCertChange}
+                  onPreview={() => {
+                    if (createCertObjectUrl) openCertPreview(createCertObjectUrl, createCertFile?.name);
+                  }}
+                  onRemove={() => { setCreateCertFile(null); setCreateCertObjectUrl(null); }}
+                />
+              </Grid>
+            )}
           </Grid>
 
         </DialogContent>
@@ -551,7 +895,6 @@ export default function StudentsPage() {
           {/* ── Photo upload ── */}
           <SectionHead icon={<CameraAlt />} label="Profile Photo" />
           <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 3, mb: 4 }}>
-            {/* 7:9 passport-ratio photo box */}
             <Box
               onClick={() => editPhotoRef.current?.click()}
               sx={{
@@ -669,7 +1012,18 @@ export default function StudentsPage() {
                 value={editForm.course_id}
                 onChange={e => setEditForm({ ...editForm, course_id: e.target.value, batch_id: '' })}>
                 <MenuItem value=""><em>Select course</em></MenuItem>
-                {courses.map(c => <MenuItem key={c.id} value={c.id}>{c.name} ({c.code})</MenuItem>)}
+                {courses.map(c => (
+                  <MenuItem key={c.id} value={c.id}>
+                    {c.name} ({c.code})
+                    {c.passing_criteria_wpm >= CERT_WPM_THRESHOLD && (
+                      <Chip
+                        label={`${c.passing_criteria_wpm} WPM`}
+                        size="small"
+                        sx={{ ml: 1, fontSize: 10, bgcolor: '#fef3c7', color: '#92400e', height: 18 }}
+                      />
+                    )}
+                  </MenuItem>
+                ))}
               </TextField>
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -684,6 +1038,24 @@ export default function StudentsPage() {
                 )}
               </TextField>
             </Grid>
+
+            {/* ── Prerequisite Certificate Zone (edit) ── */}
+            {courseNeedsCert(courses, editForm.course_id) && (
+              <Grid item xs={12}>
+                <CertUploadZone
+                  wpmRequired={courseWpm(courses, editForm.course_id)}
+                  certFile={editCertFile}
+                  certUrl={editCertObjectUrl}
+                  existingCertUrl={editingStudent?.prerequisite_cert_url}
+                  onFileChange={handleEditCertChange}
+                  onPreview={() => {
+                    const previewUrl = editCertObjectUrl || editingStudent?.prerequisite_cert_url || '';
+                    if (previewUrl) openCertPreview(previewUrl, editCertFile?.name || 'Certificate');
+                  }}
+                  onRemove={() => { setEditCertFile(null); setEditCertObjectUrl(null); }}
+                />
+              </Grid>
+            )}
           </Grid>
 
         </DialogContent>
@@ -695,6 +1067,14 @@ export default function StudentsPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* ── Certificate Preview Dialog ── */}
+      <CertPreviewDialog
+        open={certPreviewOpen}
+        onClose={() => setCertPreviewOpen(false)}
+        url={certPreviewUrl}
+        fileName={certPreviewFileName}
+      />
 
       <Snackbar open={snackbar.open} autoHideDuration={5000}
         onClose={() => setSnackbar(s => ({ ...s, open: false }))}

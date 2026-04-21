@@ -115,6 +115,7 @@ export async function POST(request: NextRequest) {
             aadhar_card_no, blood_group, date_of_birth,
             mother_name, guardian_name, guardian_phone,
             batch_id, photo_url,
+            prerequisite_cert_url,
         } = body;
 
         if (!first_name || !surname || !email || !password) {
@@ -126,6 +127,23 @@ export async function POST(request: NextRequest) {
 
         const fullName = [first_name, father_name, surname].filter(Boolean).join(' ');
         const admin = await getAdminClient();
+
+        // ── Prerequisite certificate check ────────────────────────────────────
+        // If the assigned batch's course requires >= 40 WPM, a certificate is mandatory.
+        if (batch_id) {
+            const { data: batchData } = await admin
+                .from('batches')
+                .select('course_id, courses ( passing_criteria_wpm )')
+                .eq('id', batch_id)
+                .single();
+            const wpm = (batchData as any)?.courses?.passing_criteria_wpm ?? 0;
+            if (wpm >= 40 && !prerequisite_cert_url) {
+                return NextResponse.json(
+                    { error: `This course requires ${wpm} WPM. Please upload a valid prerequisite completion certificate (30 WPM or 40 WPM) before enrolling the student.` },
+                    { status: 400 }
+                );
+            }
+        }
 
         // Auto-generate enrollment number
         const enrollment_number = await generateEnrollmentNumber(
@@ -166,6 +184,8 @@ export async function POST(request: NextRequest) {
             guardian_name: guardian_name || null,
             guardian_phone: guardian_phone || null,
             photo_url: photo_url || null,
+            prerequisite_cert_url: prerequisite_cert_url || null,
+            prerequisite_cert_uploaded_at: prerequisite_cert_url ? new Date().toISOString() : null,
         }).select().single();
 
         if (studentError) {

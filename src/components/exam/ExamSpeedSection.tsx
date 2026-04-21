@@ -158,14 +158,21 @@ export default function ExamSpeedSection({ passage, courseWpm, onComplete }: any
                 <Typography variant="overline" color="text.secondary" fontWeight={700} sx={{ mb: 2, display: 'block' }}>
                     📄 Reference Passage (Read & Type Below)
                 </Typography>
-                <Box sx={{
-                    p: 3, bgcolor: '#f8fafc', borderRadius: 2,
-                    border: '1px solid', borderColor: 'divider',
-                    minHeight: 160, lineHeight: 2.2, fontSize: isMarathi ? '22px' : '16px',
-                    fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : 'inherit',
-                    userSelect: 'none', pointerEvents: 'none',
-                    letterSpacing: isMarathi ? '0.03em' : 'normal',
-                }}>
+                <Box
+                    sx={{
+                        p: 3, bgcolor: '#f8fafc', borderRadius: 2,
+                        border: '1px solid', borderColor: 'divider',
+                        minHeight: 160, lineHeight: 2.2, fontSize: isMarathi ? '22px' : '16px',
+                        fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : 'inherit',
+                        userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none',
+                        pointerEvents: 'none',
+                        letterSpacing: isMarathi ? '0.03em' : 'normal',
+                    }}
+                    onCopy={(e) => e.preventDefault()}
+                    onCut={(e) => e.preventDefault()}
+                    onContextMenu={(e) => e.preventDefault()}
+                    onDragStart={(e) => e.preventDefault()}
+                >
                     {overlaySpans}
                 </Box>
             </Paper>
@@ -183,6 +190,8 @@ export default function ExamSpeedSection({ passage, courseWpm, onComplete }: any
                     value={typedText}
                     onChange={handleTyping}
                     onPaste={(e) => e.preventDefault()}
+                    onCopy={(e) => e.preventDefault()}
+                    onCut={(e) => e.preventDefault()}
                     onContextMenu={(e) => e.preventDefault()}
                     style={{
                         width: '100%',

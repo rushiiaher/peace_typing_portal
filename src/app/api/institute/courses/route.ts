@@ -13,7 +13,7 @@ export async function GET() {
         const admin = createAdminClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
         const { data, error } = await admin
             .from('courses')
-            .select('id, name, code, duration_months')
+            .select('id, name, code, duration_months, passing_criteria_wpm')
             .eq('is_active', true)
             .order('name');
 

@@ -16,6 +16,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Typing Portal",
   description: "Advanced Typing Practice & Examination Platform",
+  icons: {
+    icon: "/Peacexperts_LOGO.png",
+    shortcut: "/Peacexperts_LOGO.png",
+    apple: "/Peacexperts_LOGO.png",
+  },
 };
 
 export default function RootLayout({

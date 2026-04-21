@@ -61,13 +61,47 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
             date_of_birth:  (v: any) => v || null,
             blood_group:    (v: any) => v || null,
             guardian_name:  (v: any) => v || null,
-            guardian_phone:  (v: any) => v || null,
+            guardian_phone: (v: any) => v || null,
+            prerequisite_cert_url: (v: any) => v || null,
+            prerequisite_cert_uploaded_at: (v: any) => v || null,
         };
 
         const updateData: Record<string, any> = { updated_at: new Date().toISOString() };
         for (const [key, transform] of Object.entries(fieldMap)) {
             if (key in body) {
                 updateData[key] = transform(body[key]);
+            }
+        }
+
+        // ── Prerequisite certificate check on course change ─────────────────
+        // If batch is being changed to a course requiring >= 40 WPM, cert is mandatory.
+        if ('batch_id' in body && body.batch_id) {
+            const { data: batchData } = await admin
+                .from('batches')
+                .select('course_id, courses ( passing_criteria_wpm )')
+                .eq('id', body.batch_id)
+                .single();
+            const wpm = (batchData as any)?.courses?.passing_criteria_wpm ?? 0;
+            // Check: new course requires cert AND neither request nor existing student has one
+            if (wpm >= 40) {
+                const newCertUrl = body.prerequisite_cert_url;
+                if (!newCertUrl) {
+                    // Check if student already has a cert stored
+                    const { data: existingStu } = await admin
+                        .from('students')
+                        .select('prerequisite_cert_url')
+                        .eq('id', id)
+                        .single();
+                    if (!existingStu?.prerequisite_cert_url) {
+                        return NextResponse.json(
+                            { error: `This course requires ${wpm} WPM. Please upload a valid prerequisite completion certificate before changing the course.` },
+                            { status: 400 }
+                        );
+                    }
+                } else {
+                    // New cert URL provided — set the timestamp too
+                    updateData.prerequisite_cert_uploaded_at = new Date().toISOString();
+                }
             }
         }
 
