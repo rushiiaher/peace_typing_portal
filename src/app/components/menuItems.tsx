@@ -1,4 +1,4 @@
-import { Dashboard, School, Business, MenuBook, Assignment, Payment, People, Assessment, SwapHoriz, AccountBalance, CurrencyRupee, Settings, Keyboard, Speed, Description, Article, Email, Quiz, SupportAgent } from '@mui/icons-material';
+import { Dashboard, School, Business, MenuBook, Assignment, Payment, People, Assessment, SwapHoriz, AccountBalance, CurrencyRupee, Settings, Keyboard, Speed, Description, Article, Email, Quiz, SupportAgent, EmojiEvents } from '@mui/icons-material';
 
 export const superAdminMenuItems = [
   { text: 'Dashboard', icon: <Dashboard />, href: '/superadmin/dashboard' },
@@ -7,6 +7,7 @@ export const superAdminMenuItems = [
   { text: 'Institutes', icon: <Business />, href: '/superadmin/institutes' },
   { text: 'Content', icon: <MenuBook />, href: '/superadmin/content' },
   { text: 'Exams', icon: <Assignment />, href: '/superadmin/exams' },
+  { text: 'Final Results', icon: <EmojiEvents />, href: '/superadmin/final-results' },
   { text: 'Payments', icon: <Payment />, href: '/superadmin/payments' },
   { text: 'Users', icon: <People />, href: '/superadmin/users' },
   { text: 'Reports', icon: <Assessment />, href: '/superadmin/reports' },
