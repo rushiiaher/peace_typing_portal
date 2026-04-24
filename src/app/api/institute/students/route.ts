@@ -150,6 +150,32 @@ export async function POST(request: NextRequest) {
             admin, info.institute_id, info.institute_code
         );
 
+        // ── Check for orphaned auth user (auth exists but no students row) ──
+        // This happens when a previous student creation failed mid-way.
+        const { data: existingUsers } = await admin.auth.admin.listUsers({ perPage: 1000 });
+        const orphanedAuthUser = existingUsers?.users?.find(
+            (u: any) => u.email?.toLowerCase() === email.toLowerCase()
+        );
+        if (orphanedAuthUser) {
+            // Check if a students row exists for this auth user
+            const { data: existingStudent } = await admin
+                .from('students')
+                .select('id')
+                .eq('id', orphanedAuthUser.id)
+                .maybeSingle();
+
+            if (existingStudent) {
+                // Real duplicate — student already fully registered
+                return NextResponse.json(
+                    { error: 'A student with this email is already registered in the system.' },
+                    { status: 400 }
+                );
+            }
+
+            // Orphaned auth user — safe to delete and recreate
+            await admin.auth.admin.deleteUser(orphanedAuthUser.id);
+        }
+
         // Create auth user
         const { data: authData, error: authError } = await admin.auth.admin.createUser({
             email,
