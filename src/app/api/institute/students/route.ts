@@ -167,29 +167,50 @@ export async function POST(request: NextRequest) {
             admin, info.institute_id, info.institute_code
         );
 
-        // ── Check for orphaned auth user (auth exists but no students row) ──
-        // This happens when a previous student creation failed mid-way.
-        const { data: existingUsers } = await admin.auth.admin.listUsers({ perPage: 1000 });
-        const orphanedAuthUser = existingUsers?.users?.find(
-            (u: any) => u.email?.toLowerCase() === email.toLowerCase()
-        );
-        if (orphanedAuthUser) {
-            // Check if a students row exists for this auth user
-            const { data: existingStudent } = await admin
-                .from('students')
-                .select('id')
-                .eq('id', orphanedAuthUser.id)
-                .maybeSingle();
+        // ── Pre-flight: clean up any half-created records from previous failed attempts ──
 
-            if (existingStudent) {
-                // Real duplicate — student already fully registered
+        // 1. Check for orphaned students row (students row exists but auth user was deleted)
+        //    This causes the 409 on email unique constraint.
+        const { data: orphanedStudent } = await admin
+            .from('students')
+            .select('id')
+            .eq('email', email.toLowerCase())
+            .maybeSingle();
+
+        if (orphanedStudent) {
+            // Verify the auth user actually exists for this student
+            const { data: authUserCheck } = await admin.auth.admin.getUserById(orphanedStudent.id);
+            if (authUserCheck?.user) {
+                // Both auth + students row exist — genuine duplicate
                 return NextResponse.json(
                     { error: 'A student with this email is already registered in the system.' },
                     { status: 400 }
                 );
             }
+            // Auth user is gone but students row remains — delete the orphaned students row
+            await admin.from('students').delete().eq('id', orphanedStudent.id);
+        }
 
-            // Orphaned auth user — safe to delete and recreate
+        // 2. Check for orphaned auth user (auth exists but no students row)
+        //    This causes the "already registered" error from Supabase auth.
+        const { data: authUserByEmail } = await admin.auth.admin.listUsers({ perPage: 1000 });
+        const orphanedAuthUser = authUserByEmail?.users?.find(
+            (u: any) => u.email?.toLowerCase() === email.toLowerCase()
+        );
+        if (orphanedAuthUser) {
+            const { data: linkedStudent } = await admin
+                .from('students')
+                .select('id')
+                .eq('id', orphanedAuthUser.id)
+                .maybeSingle();
+            if (linkedStudent) {
+                // Both exist — genuine duplicate
+                return NextResponse.json(
+                    { error: 'A student with this email is already registered in the system.' },
+                    { status: 400 }
+                );
+            }
+            // Auth user exists but no students row — delete orphaned auth user
             await admin.auth.admin.deleteUser(orphanedAuthUser.id);
         }
 
@@ -232,7 +253,8 @@ export async function POST(request: NextRequest) {
         }).select().single();
 
         if (studentError) {
-            await admin.auth.admin.deleteUser(authData.user.id);
+            // Best-effort rollback — don't let rollback failure mask the real error
+            try { await admin.auth.admin.deleteUser(authData.user.id); } catch (_) { }
             return NextResponse.json({ error: studentError.message }, { status: 500 });
         }
 
