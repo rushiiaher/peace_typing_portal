@@ -2,7 +2,7 @@ import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 
-async function getAdminClient() {
+function getAdmin() {
     return createAdminClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -14,7 +14,7 @@ async function getInstituteInfo(): Promise<{ institute_id: string; institute_cod
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
-    const admin = await getAdminClient();
+    const admin = getAdmin();
     const { data } = await admin
         .from('institute_admins')
         .select('institute_id, institutes(code)')
@@ -32,7 +32,6 @@ async function generateEnrollmentNumber(admin: any, instituteId: string, institu
     const year = new Date().getFullYear();
     const prefix = `${instituteCode.toUpperCase()}-${year}-`;
 
-    // Get the highest existing sequence number for this prefix to avoid duplicates
     const { data: existing } = await admin
         .from('students')
         .select('enrollment_number')
@@ -48,7 +47,7 @@ async function generateEnrollmentNumber(admin: any, instituteId: string, institu
         if (!isNaN(parsed)) nextSeq = parsed + 1;
     }
 
-    // Verify uniqueness — increment until we find a free slot
+    // Verify uniqueness — increment until free
     while (true) {
         const candidate = `${prefix}${String(nextSeq).padStart(4, '0')}`;
         const { count } = await admin
@@ -60,13 +59,27 @@ async function generateEnrollmentNumber(admin: any, instituteId: string, institu
     }
 }
 
+/**
+ * Find an existing auth user by email using listUsers with a filter.
+ * Returns the user object or null.
+ */
+async function findAuthUserByEmail(admin: any, email: string): Promise<any | null> {
+    // listUsers supports server-side filter
+    const { data, error } = await admin.auth.admin.listUsers({
+        perPage: 1000,
+        // filter is not supported in all SDK versions, so we filter client-side
+    });
+    if (error || !data?.users) return null;
+    return data.users.find((u: any) => u.email?.toLowerCase() === email.toLowerCase()) ?? null;
+}
+
 // ─── GET — list students ──────────────────────────────────────────────────────
 export async function GET() {
     try {
         const info = await getInstituteInfo();
         if (!info) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const admin = await getAdminClient();
+        const admin = getAdmin();
         const { data, error } = await admin
             .from('students')
             .select(`
@@ -142,11 +155,11 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        const normalizedEmail = email.trim().toLowerCase();
         const fullName = [first_name, father_name, surname].filter(Boolean).join(' ');
-        const admin = await getAdminClient();
+        const admin = getAdmin();
 
         // ── Prerequisite certificate check ────────────────────────────────────
-        // If the assigned batch's course requires >= 40 WPM, a certificate is mandatory.
         if (batch_id) {
             const { data: batchData } = await admin
                 .from('batches')
@@ -156,80 +169,84 @@ export async function POST(request: NextRequest) {
             const wpm = (batchData as any)?.courses?.passing_criteria_wpm ?? 0;
             if (wpm >= 40 && !prerequisite_cert_url) {
                 return NextResponse.json(
-                    { error: `This course requires ${wpm} WPM. Please upload a valid prerequisite completion certificate (30 WPM or 40 WPM) before enrolling the student.` },
+                    { error: `This course requires ${wpm} WPM. Please upload a valid prerequisite completion certificate before enrolling the student.` },
                     { status: 400 }
                 );
             }
         }
 
-        // Auto-generate enrollment number
+        // ── Step 1: Check if a fully-registered student already exists ────────
+        const { data: existingStudentRow } = await admin
+            .from('students')
+            .select('id, email')
+            .eq('email', normalizedEmail)
+            .maybeSingle();
+
+        if (existingStudentRow) {
+            // A students row exists with this email — check if auth user is also alive
+            const { data: authCheck } = await admin.auth.admin.getUserById(existingStudentRow.id);
+            if (authCheck?.user && !authCheck.user.deleted_at) {
+                // Fully registered — genuine duplicate
+                return NextResponse.json(
+                    { error: 'A student with this email is already registered.' },
+                    { status: 400 }
+                );
+            }
+            // Auth user is gone/soft-deleted but students row remains — clean it up
+            await admin.from('students').delete().eq('id', existingStudentRow.id);
+        }
+
+        // ── Step 2: Resolve auth user state for this email ────────────────────
+        // Supabase soft-deletes users — their email stays reserved even after "deletion".
+        // We must REUSE the existing auth user ID rather than trying to delete+recreate.
+        const existingAuthUser = await findAuthUserByEmail(admin, normalizedEmail);
+
+        let authUserId: string;
+
+        if (existingAuthUser) {
+            // Auth user exists (active or soft-deleted) — update it and reuse the ID
+            const { data: updatedAuth, error: updateError } = await admin.auth.admin.updateUserById(
+                existingAuthUser.id,
+                {
+                    password: password || 'student123',
+                    email_confirm: true,
+                    user_metadata: {
+                        full_name: fullName,
+                        role: 'student',
+                        phone: phone || null,
+                    },
+                }
+            );
+            if (updateError) {
+                return NextResponse.json({ error: `Auth update failed: ${updateError.message}` }, { status: 500 });
+            }
+            authUserId = updatedAuth.user.id;
+        } else {
+            // No auth user at all — create fresh
+            const { data: newAuth, error: createError } = await admin.auth.admin.createUser({
+                email: normalizedEmail,
+                password: password || 'student123',
+                email_confirm: true,
+                user_metadata: {
+                    full_name: fullName,
+                    role: 'student',
+                    phone: phone || null,
+                },
+            });
+            if (createError) {
+                return NextResponse.json({ error: createError.message }, { status: 400 });
+            }
+            authUserId = newAuth.user.id;
+        }
+
+        // ── Step 3: Generate enrollment number ────────────────────────────────
         const enrollment_number = await generateEnrollmentNumber(
             admin, info.institute_id, info.institute_code
         );
 
-        // ── Pre-flight: clean up any half-created records from previous failed attempts ──
-
-        // 1. Check for orphaned students row (students row exists but auth user was deleted)
-        //    This causes the 409 on email unique constraint.
-        const { data: orphanedStudent } = await admin
-            .from('students')
-            .select('id')
-            .eq('email', email.toLowerCase())
-            .maybeSingle();
-
-        if (orphanedStudent) {
-            // Verify the auth user actually exists for this student
-            const { data: authUserCheck } = await admin.auth.admin.getUserById(orphanedStudent.id);
-            if (authUserCheck?.user) {
-                // Both auth + students row exist — genuine duplicate
-                return NextResponse.json(
-                    { error: 'A student with this email is already registered in the system.' },
-                    { status: 400 }
-                );
-            }
-            // Auth user is gone but students row remains — delete the orphaned students row
-            await admin.from('students').delete().eq('id', orphanedStudent.id);
-        }
-
-        // 2. Check for orphaned auth user (auth exists but no students row)
-        //    This causes the "already registered" error from Supabase auth.
-        const { data: authUserByEmail } = await admin.auth.admin.listUsers({ perPage: 1000 });
-        const orphanedAuthUser = authUserByEmail?.users?.find(
-            (u: any) => u.email?.toLowerCase() === email.toLowerCase()
-        );
-        if (orphanedAuthUser) {
-            const { data: linkedStudent } = await admin
-                .from('students')
-                .select('id')
-                .eq('id', orphanedAuthUser.id)
-                .maybeSingle();
-            if (linkedStudent) {
-                // Both exist — genuine duplicate
-                return NextResponse.json(
-                    { error: 'A student with this email is already registered in the system.' },
-                    { status: 400 }
-                );
-            }
-            // Auth user exists but no students row — delete orphaned auth user
-            await admin.auth.admin.deleteUser(orphanedAuthUser.id);
-        }
-
-        // Create auth user
-        const { data: authData, error: authError } = await admin.auth.admin.createUser({
-            email,
-            password: password || 'student123',
-            email_confirm: true,
-            user_metadata: {
-                full_name: fullName,
-                role: 'student',
-                phone: phone || null,
-            },
-        });
-        if (authError) return NextResponse.json({ error: authError.message }, { status: 400 });
-
-        // Insert into students table
+        // ── Step 4: Insert students row ───────────────────────────────────────
         const { data: studentData, error: studentError } = await admin.from('students').insert({
-            id: authData.user.id,
+            id: authUserId,
             institute_id: info.institute_id,
             batch_id: batch_id || null,
             enrollment_number,
@@ -237,7 +254,7 @@ export async function POST(request: NextRequest) {
             first_name: first_name || null,
             father_name: father_name || null,
             surname: surname || null,
-            email,
+            email: normalizedEmail,
             phone: phone || null,
             address: address || null,
             is_active: is_active ?? true,
@@ -253,8 +270,10 @@ export async function POST(request: NextRequest) {
         }).select().single();
 
         if (studentError) {
-            // Best-effort rollback — don't let rollback failure mask the real error
-            try { await admin.auth.admin.deleteUser(authData.user.id); } catch (_) { }
+            // Best-effort rollback — only if we just created a brand-new auth user
+            if (!existingAuthUser) {
+                try { await admin.auth.admin.deleteUser(authUserId); } catch (_) { }
+            }
             return NextResponse.json({ error: studentError.message }, { status: 500 });
         }
 
