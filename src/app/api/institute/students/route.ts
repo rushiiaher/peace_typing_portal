@@ -32,15 +32,32 @@ async function generateEnrollmentNumber(admin: any, instituteId: string, institu
     const year = new Date().getFullYear();
     const prefix = `${instituteCode.toUpperCase()}-${year}-`;
 
-    // Count existing students in this institute for this year
-    const { count } = await admin
+    // Get the highest existing sequence number for this prefix to avoid duplicates
+    const { data: existing } = await admin
         .from('students')
-        .select('id', { count: 'exact', head: true })
+        .select('enrollment_number')
         .eq('institute_id', instituteId)
-        .like('enrollment_number', `${prefix}%`);
+        .like('enrollment_number', `${prefix}%`)
+        .order('enrollment_number', { ascending: false })
+        .limit(1);
 
-    const seq = String((count ?? 0) + 1).padStart(4, '0');
-    return `${prefix}${seq}`;
+    let nextSeq = 1;
+    if (existing && existing.length > 0) {
+        const lastNum = existing[0].enrollment_number?.split('-').pop();
+        const parsed = parseInt(lastNum ?? '0', 10);
+        if (!isNaN(parsed)) nextSeq = parsed + 1;
+    }
+
+    // Verify uniqueness — increment until we find a free slot
+    while (true) {
+        const candidate = `${prefix}${String(nextSeq).padStart(4, '0')}`;
+        const { count } = await admin
+            .from('students')
+            .select('id', { count: 'exact', head: true })
+            .eq('enrollment_number', candidate);
+        if ((count ?? 0) === 0) return candidate;
+        nextSeq++;
+    }
 }
 
 // ─── GET — list students ──────────────────────────────────────────────────────
