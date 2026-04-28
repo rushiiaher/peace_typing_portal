@@ -29,9 +29,18 @@ export async function PATCH(request: NextRequest) {
             auth: { autoRefreshToken: false, persistSession: false },
         });
 
-        // ── Step 1: Update auth user (email stays the same; optionally update password & metadata) ──
+        // ── Step 1: Fetch existing user to preserve user_metadata fields (e.g. role) ──
+        // updateUserById REPLACES user_metadata entirely, so we must merge existing fields.
+        const { data: existingUserData, error: getUserError } = await supabaseAdmin.auth.admin.getUserById(userId);
+        if (getUserError) {
+            return NextResponse.json({ error: getUserError.message }, { status: 400 });
+        }
+        const existingMeta = existingUserData.user.user_metadata ?? {};
+
+        // ── Step 2: Update auth user (email stays the same; optionally update password & metadata) ──
+        // Spread existing metadata first so that role, and any other fields, are preserved.
         const authUpdatePayload: Record<string, any> = {
-            user_metadata: { full_name, phone: phone || null },
+            user_metadata: { ...existingMeta, full_name, phone: phone || null },
         };
         if (password && password.length >= 8) {
             authUpdatePayload.password = password;
@@ -46,7 +55,7 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: authUpdateError.message }, { status: 400 });
         }
 
-        // ── Step 2: Update institute_admins table ──
+        // ── Step 3: Update institute_admins table ──
         const updatePayload: Record<string, any> = {
             name: full_name,
             phone: phone || null,
