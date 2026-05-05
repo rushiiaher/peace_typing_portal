@@ -17,13 +17,13 @@ export async function GET() {
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const admin = getAdmin();
-        // Verify student exists
+        // Verify student exists and is active
         const { data: studentRow } = await admin
             .from('students')
-            .select('id')
+            .select('id, is_active')
             .eq('id', user.id)
             .single();
-        if (!studentRow) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        if (!studentRow || !studentRow.is_active) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         // DB columns: accuracy_percentage, time_spent_seconds, mistakes_count
         // practice_type values: 'keyboard', 'speed', 'letter', 'statement', 'email', 'mcq'

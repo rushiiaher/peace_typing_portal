@@ -24,7 +24,7 @@ export default function StudentLogin() {
             const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
             if (signInError) {
                 if (signInError.message.toLowerCase().includes('banned') || signInError.message.toLowerCase().includes('disabled')) {
-                    setError('Your account is not yet activated. Please contact your institute to complete exam fee payment.')
+                    setError('Your account is inactive. Please contact your institute admin.')
                 } else {
                     setError(signInError.message)
                 }

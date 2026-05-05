@@ -17,6 +17,13 @@ export async function GET() {
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const admin = getAdmin();
+        const { data: studentRow } = await admin
+            .from('students')
+            .select('id, is_active')
+            .eq('id', user.id)
+            .single();
+        if (!studentRow || !studentRow.is_active) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
         const { data: exams, error } = await admin
             .from('exams')
             .select(`

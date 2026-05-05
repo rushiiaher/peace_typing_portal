@@ -106,11 +106,15 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
         }
 
         // Update auth metadata only if relevant fields are being changed
-        if ('name' in body || 'phone' in body || 'password' in body) {
+        if ('name' in body || 'phone' in body || 'password' in body || 'is_active' in body) {
             const authPayload: any = { user_metadata: {} };
             if ('name' in body) authPayload.user_metadata.full_name = body.name;
             if ('phone' in body) authPayload.user_metadata.phone = body.phone || null;
             if (body.password && body.password.length >= 6) authPayload.password = body.password;
+            // Ban/unban to immediately invalidate sessions when student is deactivated
+            if ('is_active' in body) {
+                authPayload.ban_duration = body.is_active ? 'none' : '876000h';
+            }
             const { error: authError } = await admin.auth.admin.updateUserById(id, authPayload);
             if (authError) throw authError;
         }

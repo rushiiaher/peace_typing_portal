@@ -31,7 +31,7 @@ export async function getStudentInfo() {
     const { data } = await admin
         .from('students')
         .select(`
-            id, institute_id, batch_id,
+            id, institute_id, batch_id, is_active,
             batches (
                  course_id,
                  courses ( name )
@@ -40,7 +40,7 @@ export async function getStudentInfo() {
         .eq('id', user.id)
         .single();
 
-    if (!data) return null;
+    if (!data || !data.is_active) return null;
     const course = (data.batches as any)?.courses;
     const course_id = (data.batches as any)?.course_id ?? null;
     const is_marathi = course?.name?.toLowerCase().includes('marathi') || false;
