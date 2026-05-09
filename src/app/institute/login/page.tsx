@@ -21,15 +21,24 @@ export default function InstituteAdminLogin() {
         setLoading(true)
 
         try {
-            const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+            const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
             if (signInError) { setError(signInError.message); return }
 
-            const role = data.user.user_metadata?.role
-            if (role !== 'institute_admin') {
+            // Server-side role check — falls back to institute_admins table for accounts
+            // created before user_metadata.role was introduced, and self-heals those accounts.
+            const verifyRes = await fetch('/api/institute/verify-login', { method: 'POST' })
+            const verifyData = await verifyRes.json()
+
+            if (!verifyData.allowed) {
                 await supabase.auth.signOut()
-                setError('Access denied. This account is not registered as an Institute Admin.')
+                if (verifyData.reason === 'account_inactive') {
+                    setError('Your account has been deactivated. Contact the administrator.')
+                } else {
+                    setError('Access denied. This account is not registered as an Institute Admin.')
+                }
                 return
             }
+
             router.push('/institute/dashboard')
             router.refresh()
         } catch (err: any) {
