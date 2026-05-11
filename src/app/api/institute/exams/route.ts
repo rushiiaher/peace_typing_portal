@@ -127,7 +127,8 @@ export async function PATCH(req: NextRequest) {
             const ctx = await getInstituteContext(admin, user.id);
             if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-            const startDT = parseISO(`${newExamDate}T${newStartTime}`);
+            // Append IST offset — user's wall-clock input must be treated as IST not UTC
+            const startDT = parseISO(`${newExamDate}T${newStartTime}:00+05:30`);
             const endDT       = addMinutes(startDT, EXAM_DURATION_MINUTES);
             const reportingDT = addMinutes(startDT, -30);
             const gateDT      = addMinutes(startDT, -5);

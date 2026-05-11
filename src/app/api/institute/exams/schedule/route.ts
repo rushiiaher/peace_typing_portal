@@ -94,7 +94,8 @@ export async function POST(req: NextRequest) {
         const totalDuration = pattern.duration_minutes as number;
 
         // 4. Operational hours — skip when not configured
-        const startDateTime = parseISO(`${examDate}T${startTime}`);
+        // Append IST offset so the user's local wall-clock time is stored correctly as UTC
+        const startDateTime = parseISO(`${examDate}T${startTime}:00+05:30`);
         const endDateTime = addMinutes(startDateTime, totalDuration);
         const startStr = format(startDateTime, 'HH:mm:ss');
         const endStr = format(endDateTime, 'HH:mm:ss');

@@ -6,6 +6,7 @@ import {
     Box, Typography, CircularProgress, Alert, Chip, Paper, Stack,
     Grid, Avatar, Divider, Button,
 } from '@mui/material';
+import { format, parseISO } from 'date-fns';
 import {
     Event, AccessTime, School, PlayArrow, CheckCircle,
     HourglassEmpty, Cancel,
@@ -113,7 +114,7 @@ function ExamCard({ exam }: { exam: any }) {
     const status = exam.status || 'scheduled';
     const cfg = statusConfig[status] || statusConfig.scheduled;
     const isActionable = status === 'scheduled' || status === 'in_progress';
-    const examDate = exam.exam_date ? new Date(exam.exam_date) : null;
+    const examDate = exam.exam_date ? parseISO(exam.exam_date) : null;
 
     return (
         <Paper elevation={0} variant="outlined" sx={{
@@ -148,7 +149,7 @@ function ExamCard({ exam }: { exam: any }) {
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                 <Event fontSize="small" color="action" />
                                 <Typography variant="body2" color="text.secondary">
-                                    {examDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                    {format(examDate, 'd MMMM yyyy')}
                                 </Typography>
                             </Box>
                         )}
@@ -156,7 +157,7 @@ function ExamCard({ exam }: { exam: any }) {
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                 <AccessTime fontSize="small" color="action" />
                                 <Typography variant="body2" color="text.secondary">
-                                    {new Date(exam.start_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                    {format(parseISO(exam.start_time), 'hh:mm a')}
                                 </Typography>
                             </Box>
                         )}
