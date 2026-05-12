@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 
 export default function StudentLogin() {
@@ -13,7 +13,15 @@ export default function StudentLogin() {
     const [error, setError] = useState('')
     const [loading, setLoading] = useState(false)
     const router = useRouter()
+    const searchParams = useSearchParams()
     const supabase = createClient()
+
+    useEffect(() => {
+        if (searchParams.get('reason') === 'inactive') {
+            setError('Your account has been deactivated. Please contact your institute admin.')
+            supabase.auth.signOut()
+        }
+    }, [searchParams])
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -21,7 +29,7 @@ export default function StudentLogin() {
         setLoading(true)
 
         try {
-            const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+            const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
             if (signInError) {
                 if (signInError.message.toLowerCase().includes('banned') || signInError.message.toLowerCase().includes('disabled')) {
                     setError('Your account is inactive. Please contact your institute admin.')
@@ -31,12 +39,21 @@ export default function StudentLogin() {
                 return
             }
 
-            const role = data.user.user_metadata?.role
-            if (role !== 'student') {
+            const verifyRes = await fetch('/api/student/verify-login', { method: 'POST' })
+            const verifyData = await verifyRes.json()
+
+            if (!verifyData.allowed) {
                 await supabase.auth.signOut()
-                setError('Access denied. This login is only for students.')
+                if (verifyData.reason === 'inactive') {
+                    setError('Your account has been deactivated. Please contact your institute admin.')
+                } else if (verifyData.reason === 'not_student') {
+                    setError('Access denied. This login is only for students.')
+                } else {
+                    setError('Account not found. Please contact your institute admin.')
+                }
                 return
             }
+
             router.push('/student/dashboard')
             router.refresh()
         } catch (err: any) {
