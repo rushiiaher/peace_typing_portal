@@ -10,6 +10,7 @@
  *   duration_seconds  INTEGER
  *
  * students table has NO course_id column — course comes via batches FK.
+ * Uses flat parallel lookups to avoid PostgREST FK ambiguity errors.
  */
 import { createClient } from '@/utils/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
@@ -28,27 +29,41 @@ export async function getStudentInfo() {
     if (!user) return null;
 
     const admin = getAdmin();
-    const { data } = await admin
+
+    // Flat lookup — no embedded joins to avoid PostgREST FK ambiguity
+    const { data: student, error: stuErr } = await admin
         .from('students')
-        .select(`
-            id, institute_id, batch_id, is_active,
-            batches (
-                 course_id,
-                 courses ( name )
-            )
-        `)
+        .select('id, institute_id, batch_id, is_active')
         .eq('id', user.id)
         .single();
 
-    if (!data || !data.is_active) return null;
-    const course = (data.batches as any)?.courses;
-    const course_id = (data.batches as any)?.course_id ?? null;
-    const is_marathi = course?.name?.toLowerCase().includes('marathi') || false;
+    if (stuErr || !student || !student.is_active) return null;
+
+    let course_id: string | null = null;
+    let is_marathi = false;
+
+    if (student.batch_id) {
+        const { data: batch } = await admin
+            .from('batches')
+            .select('course_id')
+            .eq('id', student.batch_id)
+            .single();
+
+        if (batch?.course_id) {
+            course_id = batch.course_id;
+            const { data: course } = await admin
+                .from('courses')
+                .select('name')
+                .eq('id', batch.course_id)
+                .single();
+            is_marathi = course?.name?.toLowerCase().includes('marathi') ?? false;
+        }
+    }
 
     return {
-        student_id: data.id,
-        institute_id: data.institute_id,
-        batch_id: data.batch_id ?? null,
+        student_id: student.id,
+        institute_id: student.institute_id,
+        batch_id: student.batch_id ?? null,
         course_id,
         is_marathi,
     };
