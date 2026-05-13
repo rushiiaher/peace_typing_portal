@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 
 export default function StudentLogin() {
@@ -13,15 +13,15 @@ export default function StudentLogin() {
     const [error, setError] = useState('')
     const [loading, setLoading] = useState(false)
     const router = useRouter()
-    const searchParams = useSearchParams()
     const supabase = createClient()
 
     useEffect(() => {
-        if (searchParams.get('reason') === 'inactive') {
+        const params = new URLSearchParams(window.location.search)
+        if (params.get('reason') === 'inactive') {
             setError('Your account has been deactivated. Please contact your institute admin.')
             supabase.auth.signOut()
         }
-    }, [searchParams])
+    }, [])
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
