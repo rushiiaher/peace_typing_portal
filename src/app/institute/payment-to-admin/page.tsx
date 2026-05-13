@@ -198,18 +198,26 @@ export default function PaymentToAdminPage() {
                     : `Delivery: ${(target as DeliveryRow).batch_name}`,
                 order_id: order.id,
                 handler: async (response: any) => {
-                    const verifyRes = await fetch('/api/razorpay/verify', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            ...response, payment_type: type,
-                            student_id: type === 'exam_fee' ? target.id : null,
-                            batch_id: type === 'delivery_charge' ? target.id : null,
-                            amount, notes: 'Online Payment',
-                        }),
-                    });
-                    const verJson = await verifyRes.json();
-                    if (verJson.success) { showSnackbar('Payment successful!', 'success'); fetchAll(); }
-                    else throw new Error(verJson.error || 'Verification failed');
+                    try {
+                        const verifyRes = await fetch('/api/razorpay/verify', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                ...response, payment_type: type,
+                                student_id: type === 'exam_fee' ? target.id : null,
+                                batch_id: type === 'delivery_charge' ? target.id : null,
+                                amount, notes: 'Online Payment',
+                            }),
+                        });
+                        const verJson = await verifyRes.json();
+                        if (verJson.success) {
+                            showSnackbar('Payment successful! Status updated.', 'success');
+                            fetchAll();
+                        } else {
+                            showSnackbar(`Payment received by Razorpay but portal update failed: ${verJson.error || 'Verification failed'}. Contact support with Payment ID: ${response.razorpay_payment_id}`, 'error');
+                        }
+                    } catch (handlerErr: any) {
+                        showSnackbar(`Payment received but confirmation failed: ${handlerErr.message}. Contact support with Payment ID: ${response.razorpay_payment_id}`, 'error');
+                    }
                 },
                 prefill: {
                     name: type === 'exam_fee' ? (target as ExamFeeRow).student_name : adminInfo?.name || '',
@@ -292,28 +300,32 @@ export default function PaymentToAdminPage() {
                 description: `Bulk Exam Fee — ${studentIds.length} student${studentIds.length !== 1 ? 's' : ''}`,
                 order_id: order.id,
                 handler: async (response: any) => {
-                    setBulkProgress(70);
-                    // Verify signature server-side and record bulk payments
-                    const verifyRes = await fetch('/api/institute/payment-to-admin/bulk', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            student_ids: studentIds,
-                            amount_per_student: amountMap,
-                            payment_mode: 'razorpay',
-                            payment_reference: response.razorpay_payment_id,
-                            razorpay_order_id: response.razorpay_order_id,
-                            razorpay_payment_id: response.razorpay_payment_id,
-                            razorpay_signature: response.razorpay_signature,
-                            notes: `Bulk Razorpay Order: ${response.razorpay_order_id}`,
-                        }),
-                    });
-                    const verJson = await verifyRes.json();
-                    if (!verifyRes.ok) throw new Error(verJson.error || 'Bulk verification failed');
-                    setBulkProgress(100);
-                    showSnackbar(`${verJson.processed} student(s) paid & activated successfully!`, 'success');
-                    setBulkPayDialog(false);
-                    clearSelection();
-                    fetchAll();
+                    try {
+                        setBulkProgress(70);
+                        const verifyRes = await fetch('/api/institute/payment-to-admin/bulk', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                student_ids: studentIds,
+                                amount_per_student: amountMap,
+                                payment_mode: 'razorpay',
+                                payment_reference: response.razorpay_payment_id,
+                                razorpay_order_id: response.razorpay_order_id,
+                                razorpay_payment_id: response.razorpay_payment_id,
+                                razorpay_signature: response.razorpay_signature,
+                                notes: `Bulk Razorpay Order: ${response.razorpay_order_id}`,
+                            }),
+                        });
+                        const verJson = await verifyRes.json();
+                        if (!verifyRes.ok) throw new Error(verJson.error || 'Bulk verification failed');
+                        setBulkProgress(100);
+                        showSnackbar(`${verJson.processed} student(s) paid & activated successfully!`, 'success');
+                        setBulkPayDialog(false);
+                        clearSelection();
+                        fetchAll();
+                    } catch (handlerErr: any) {
+                        setBulkProgress(0);
+                        showSnackbar(`Bulk payment received but confirmation failed: ${handlerErr.message}. Contact support with Payment ID: ${response.razorpay_payment_id}`, 'error');
+                    }
                 },
                 prefill: {
                     name: adminInfo?.name || '',

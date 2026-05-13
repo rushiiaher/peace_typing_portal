@@ -32,7 +32,8 @@ export async function POST(req: NextRequest) {
             .digest('hex');
 
         if (expectedSignature !== razorpay_signature) {
-            return NextResponse.json({ error: 'Invalid payment signature' }, { status: 400 });
+            console.error('[razorpay/verify] Signature mismatch. Check RAZORPAY_KEY_SECRET matches the key used to create the order.');
+            return NextResponse.json({ error: 'Invalid payment signature — key mismatch. Ensure RAZORPAY_KEY_SECRET env var matches NEXT_PUBLIC_RAZORPAY_KEY_ID key pair.' }, { status: 400 });
         }
 
         // 2. Auth Check
