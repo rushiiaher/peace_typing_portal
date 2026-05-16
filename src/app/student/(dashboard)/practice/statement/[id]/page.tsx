@@ -28,6 +28,8 @@ interface CellStyle {
     italic?: boolean;
     underline?: boolean;
     align?: 'left' | 'center' | 'right';
+    border?: boolean;
+    fontSize?: number;
 }
 
 interface MergeRange {
@@ -136,7 +138,11 @@ function ExcelGrid({
                                 key={`${r}-${c}`}
                                 onClick={() => setActiveCell?.([r, c])}
                                 sx={{
-                                    border: isActive ? '2px solid #217346' : '1px solid #ddd',
+                                    border: isActive
+                                        ? '2px solid #217346'
+                                        : cellStyle.border
+                                            ? '1px solid #333'
+                                            : '1px solid #ddd',
                                     height: merge ? ((merge.e.r - merge.s.r + 1) * 22) : 22,
                                     gridColumn: merge ? `span ${merge.e.c - merge.s.c + 1}` : 'span 1',
                                     gridRow: merge ? `span ${merge.e.r - merge.s.r + 1}` : 'span 1',
@@ -149,6 +155,7 @@ function ExcelGrid({
                                     fontWeight: cellStyle.bold || (isReference && r < 3) ? 700 : 400,
                                     fontStyle: cellStyle.italic ? 'italic' : 'normal',
                                     textDecoration: cellStyle.underline ? 'underline' : isReference && r === 0 ? 'underline' : 'none',
+                                    fontSize: cellStyle.fontSize ? cellStyle.fontSize : undefined,
                                     overflow: 'hidden',
                                     whiteSpace: 'nowrap',
                                     zIndex: isActive ? 12 : 1,
@@ -416,8 +423,15 @@ export default function StatementPracticeSession() {
                     <Select value="Calibri" size="small" sx={{ height: 26, fontSize: 12, bgcolor: '#fff', minWidth: 100 }} readOnly>
                         <MenuItem value="Calibri">Calibri</MenuItem>
                     </Select>
-                    <Select value={11} size="small" sx={{ height: 26, fontSize: 12, bgcolor: '#fff', minWidth: 50 }} readOnly>
-                        <MenuItem value={11}>11</MenuItem>
+                    <Select
+                        value={cellStyles[`${activeCell[0]}-${activeCell[1]}`]?.fontSize ?? 11}
+                        size="small"
+                        sx={{ height: 26, fontSize: 12, bgcolor: '#fff', minWidth: 50 }}
+                        onChange={e => updateStyle({ fontSize: Number(e.target.value) })}
+                    >
+                        {[8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 28, 36, 48, 72].map(sz => (
+                            <MenuItem key={sz} value={sz}>{sz}</MenuItem>
+                        ))}
                     </Select>
                     <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
                     <Tooltip title="Bold"><Button size="small" onClick={() => updateStyle({ bold: !cellStyles[`${activeCell[0]}-${activeCell[1]}`]?.bold })} sx={{ minWidth: 28, height: 26, p: 0, bgcolor: cellStyles[`${activeCell[0]}-${activeCell[1]}`]?.bold ? '#dde8ff' : '#fff', border: '1px solid #ccc', color: '#333' }}><FormatBold fontSize="small" /></Button></Tooltip>
@@ -429,7 +443,7 @@ export default function StatementPracticeSession() {
                     <Tooltip title="Align Right"><Button size="small" onClick={() => updateStyle({ align: 'right' })} sx={{ minWidth: 28, height: 26, p: 0, bgcolor: cellStyles[`${activeCell[0]}-${activeCell[1]}`]?.align === 'right' ? '#dde8ff' : '#fff', border: '1px solid #ccc', color: '#333' }}><FormatAlignRight fontSize="small" /></Button></Tooltip>
                     <Tooltip title="Wrap Text"><span><Button size="small" disabled sx={{ minWidth: 28, height: 26, p: 0, bgcolor: '#fff', border: '1px solid #ccc' }}><WrapText fontSize="small" /></Button></span></Tooltip>
                     <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-                    <Tooltip title="All Borders"><span><Button size="small" disabled sx={{ minWidth: 28, height: 26, p: 0, bgcolor: '#fff', border: '1px solid #ccc' }}><BorderAll fontSize="small" /></Button></span></Tooltip>
+                    <Tooltip title="All Borders"><Button size="small" onClick={() => updateStyle({ border: !cellStyles[`${activeCell[0]}-${activeCell[1]}`]?.border })} sx={{ minWidth: 28, height: 26, p: 0, bgcolor: cellStyles[`${activeCell[0]}-${activeCell[1]}`]?.border ? '#dde8ff' : '#fff', border: '1px solid #ccc', color: '#333' }}><BorderAll fontSize="small" /></Button></Tooltip>
                 </>}
 
                 {/* ── FILE ── */}
