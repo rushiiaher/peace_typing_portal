@@ -462,6 +462,15 @@ export default function LetterPracticeSession() {
                                     promotion: false,
                                     help_accessibility: false,
                                     skin: 'oxide',
+                                    setup: (editor: any) => {
+                                        editor.on('keydown', (e: KeyboardEvent) => {
+                                            if (e.key === 'Tab') {
+                                                e.preventDefault();
+                                                // Insert tab as non-breaking spaces to match letter indentation
+                                                editor.execCommand('mceInsertContent', false, '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;');
+                                            }
+                                        });
+                                    },
                                 }}
                             />
                         </div>

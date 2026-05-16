@@ -269,6 +269,21 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
                             <textarea
                                 value={letterTyped}
                                 onChange={e => setLetterTyped(e.target.value)}
+                                onKeyDown={e => {
+                                    if (e.key === 'Tab') {
+                                        e.preventDefault();
+                                        const el = e.currentTarget;
+                                        const start = el.selectionStart;
+                                        const end = el.selectionEnd;
+                                        const tab = '\t';
+                                        const newVal = letterTyped.substring(0, start) + tab + letterTyped.substring(end);
+                                        setLetterTyped(newVal);
+                                        // Restore cursor after the inserted tab
+                                        requestAnimationFrame(() => {
+                                            el.selectionStart = el.selectionEnd = start + tab.length;
+                                        });
+                                    }
+                                }}
                                 placeholder="Type the letter exactly as shown in the reference..."
                                 style={{
                                     width: '100%',
