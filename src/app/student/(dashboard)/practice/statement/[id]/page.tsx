@@ -23,6 +23,11 @@ interface Template {
 
 type SessionState = 'idle' | 'active' | 'finished';
 
+interface SelectionRange {
+    start: [number, number];
+    end: [number, number];
+}
+
 interface CellStyle {
     bold?: boolean;
     italic?: boolean;
@@ -62,6 +67,7 @@ const DEFAULT_GRID = [
 
 function ExcelGrid({
     grid, isReference, values, onChange, activeCell, setActiveCell, merges = [], styles = {}, onStyleChange, isMarathi,
+    selectionRange, setSelectionRange,
 }: {
     grid: string[][]; isReference: boolean;
     values?: string[][]; onChange?: (r: number, c: number, val: string) => void;
@@ -70,9 +76,27 @@ function ExcelGrid({
     styles?: Record<string, CellStyle>;
     onStyleChange?: (r: number, c: number, style: Partial<CellStyle>) => void;
     isMarathi?: boolean;
+    selectionRange?: SelectionRange | null;
+    setSelectionRange?: React.Dispatch<React.SetStateAction<SelectionRange | null>>;
 }) {
     const rows = 20;
     const cols = 8;
+
+    const isDraggingRef = useRef(false);
+    useEffect(() => {
+        const stop = () => { isDraggingRef.current = false; };
+        document.addEventListener('mouseup', stop);
+        return () => document.removeEventListener('mouseup', stop);
+    }, []);
+
+    const isInSelection = (r: number, c: number) => {
+        if (!selectionRange) return false;
+        const minR = Math.min(selectionRange.start[0], selectionRange.end[0]);
+        const maxR = Math.max(selectionRange.start[0], selectionRange.end[0]);
+        const minC = Math.min(selectionRange.start[1], selectionRange.end[1]);
+        const maxC = Math.max(selectionRange.start[1], selectionRange.end[1]);
+        return r >= minR && r <= maxR && c >= minC && c <= maxC;
+    };
 
     // Helper to check if a cell is part of a merge range
     const getMerge = (r: number, c: number) => {
@@ -123,6 +147,7 @@ function ExcelGrid({
 
                         const cellVal = isReference ? (grid[r]?.[c] ?? '') : (values?.[r]?.[c] ?? '');
                         const isActive = activeCell?.[0] === r && activeCell?.[1] === c;
+                        const inSelection = !isActive && isInSelection(r, c);
                         const cellStyle = styles[`${r}-${c}`] || {};
 
                         // Auto alignment for reference based on content if no explicit style
@@ -136,13 +161,28 @@ function ExcelGrid({
                         const cellBox = (
                             <Box
                                 key={`${r}-${c}`}
-                                onClick={() => setActiveCell?.([r, c])}
+                                onMouseDown={(e) => {
+                                    if (isReference) return;
+                                    if (e.shiftKey && activeCell) {
+                                        setSelectionRange?.({ start: activeCell, end: [r, c] });
+                                    } else {
+                                        setActiveCell?.([r, c]);
+                                        setSelectionRange?.({ start: [r, c], end: [r, c] });
+                                        isDraggingRef.current = true;
+                                    }
+                                }}
+                                onMouseEnter={() => {
+                                    if (isReference || !isDraggingRef.current) return;
+                                    setSelectionRange?.(prev => prev ? { ...prev, end: [r, c] } : { start: [r, c], end: [r, c] });
+                                }}
                                 sx={{
                                     border: isActive
                                         ? '2px solid #217346'
-                                        : cellStyle.border
-                                            ? '1px solid #333'
-                                            : '1px solid #ddd',
+                                        : inSelection
+                                            ? '1px solid #5b9bd5'
+                                            : cellStyle.border
+                                                ? '1px solid #333'
+                                                : '1px solid #ddd',
                                     height: merge ? ((merge.e.r - merge.s.r + 1) * 22) : 22,
                                     gridColumn: merge ? `span ${merge.e.c - merge.s.c + 1}` : 'span 1',
                                     gridRow: merge ? `span ${merge.e.r - merge.s.r + 1}` : 'span 1',
@@ -150,8 +190,8 @@ function ExcelGrid({
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start',
-                                    bgcolor: isActive ? '#fff' : 'transparent',
-                                    cursor: isReference ? 'default' : 'text',
+                                    bgcolor: isActive ? '#fff' : inSelection ? '#c7dff5' : 'transparent',
+                                    cursor: isReference ? 'default' : 'cell',
                                     fontWeight: cellStyle.bold || (isReference && r < 3) ? 700 : 400,
                                     fontStyle: cellStyle.italic ? 'italic' : 'normal',
                                     textDecoration: cellStyle.underline ? 'underline' : isReference && r === 0 ? 'underline' : 'none',
@@ -236,6 +276,7 @@ export default function StatementPracticeSession() {
     );
     const [cellStyles, setCellStyles] = useState<Record<string, CellStyle>>({});
     const [activeCell, setActiveCell] = useState<[number, number]>([0, 0]);
+    const [selectionRange, setSelectionRange] = useState<SelectionRange | null>(null);
     const [sessionState, setSessionState] = useState<SessionState>('idle');
     const [activeTab, setActiveTab] = useState('Home');
     const [elapsed, setElapsed] = useState(0);
@@ -301,11 +342,25 @@ export default function StatementPracticeSession() {
     };
 
     const updateStyle = (style: Partial<CellStyle>) => {
-        const key = `${activeCell[0]}-${activeCell[1]}`;
-        setCellStyles(prev => ({
-            ...prev,
-            [key]: { ...(prev[key] || {}), ...style }
-        }));
+        setCellStyles(prev => {
+            const next = { ...prev };
+            if (selectionRange) {
+                const minR = Math.min(selectionRange.start[0], selectionRange.end[0]);
+                const maxR = Math.max(selectionRange.start[0], selectionRange.end[0]);
+                const minC = Math.min(selectionRange.start[1], selectionRange.end[1]);
+                const maxC = Math.max(selectionRange.start[1], selectionRange.end[1]);
+                for (let r = minR; r <= maxR; r++) {
+                    for (let c = minC; c <= maxC; c++) {
+                        const key = `${r}-${c}`;
+                        next[key] = { ...(next[key] || {}), ...style };
+                    }
+                }
+            } else {
+                const key = `${activeCell[0]}-${activeCell[1]}`;
+                next[key] = { ...(next[key] || {}), ...style };
+            }
+            return next;
+        });
     };
 
     const handleFinish = useCallback(async () => {
@@ -527,8 +582,11 @@ export default function StatementPracticeSession() {
 
             {/* Formula Bar */}
             <Stack direction="row" alignItems="center" spacing={1} sx={{ bgcolor: '#fff', borderBottom: '1px solid #ccc', px: 1, py: 0.3 }}>
-                <Box sx={{ minWidth: 40, textAlign: 'center', fontWeight: 600, color: '#666', fontSize: 12 }}>
-                    {COL_HEADERS[activeCell[1]]}{activeCell[0] + 1}
+                <Box sx={{ minWidth: 60, textAlign: 'center', fontWeight: 600, color: '#666', fontSize: 12 }}>
+                    {selectionRange && (selectionRange.start[0] !== selectionRange.end[0] || selectionRange.start[1] !== selectionRange.end[1])
+                        ? `${COL_HEADERS[Math.min(selectionRange.start[1], selectionRange.end[1])]}${Math.min(selectionRange.start[0], selectionRange.end[0]) + 1}:${COL_HEADERS[Math.max(selectionRange.start[1], selectionRange.end[1])]}${Math.max(selectionRange.start[0], selectionRange.end[0]) + 1}`
+                        : `${COL_HEADERS[activeCell[1]]}${activeCell[0] + 1}`
+                    }
                 </Box>
                 <Divider orientation="vertical" flexItem />
                 <Functions sx={{ color: '#666', fontSize: 18 }} />
@@ -588,6 +646,8 @@ export default function StatementPracticeSession() {
                             onChange={handleValueChange}
                             activeCell={activeCell}
                             setActiveCell={setActiveCell}
+                            selectionRange={selectionRange}
+                            setSelectionRange={setSelectionRange}
                             onStyleChange={(r, c, s) => {
                                 setCellStyles(prev => ({
                                     ...prev,
