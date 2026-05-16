@@ -37,6 +37,8 @@ export default function SpeedPracticeSession() {
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const startTimeRef = useRef<number>(0);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const sessionStateRef = useRef<'idle' | 'active' | 'finished'>('idle');
+    const typedTextRef = useRef('');
 
     // Results
     const [finalWpm, setFinalWpm] = useState(0);
@@ -76,6 +78,7 @@ export default function SpeedPracticeSession() {
 
     const finishSession = useCallback(async (typed: string, passageText: string, secsSpent: number) => {
         if (timerRef.current) clearInterval(timerRef.current);
+        sessionStateRef.current = 'finished';
         setSessionState('finished');
         const { wpm, accuracy, mistakes } = computeStats(typed, passageText, secsSpent);
         setFinalWpm(wpm);
@@ -92,37 +95,60 @@ export default function SpeedPracticeSession() {
         } catch { } finally { setSaving(false); }
     }, [id, computeStats]);
 
-    const handleTyping = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        if (sessionState === 'finished' || !passage) return;
-        const value = e.target.value;
-        if (value.length > passage.passage_text.length) return;
+    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (sessionStateRef.current === 'finished' || !passage) return;
+        if (e.ctrlKey || e.metaKey) return;
+        if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab', 'Escape',
+            'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+            'Home', 'End', 'PageUp', 'PageDown',
+            'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12',
+        ].includes(e.key)) return;
+        e.preventDefault();
 
-        if (sessionState === 'idle' && value.length > 0) {
+        const content = passage.passage_text;
+
+        if (e.key === 'Backspace') {
+            const newText = typedTextRef.current.slice(0, -1);
+            typedTextRef.current = newText;
+            setTypedText(newText);
+            return;
+        }
+
+        if (typedTextRef.current.length >= content.length) return;
+
+        const typed = e.key === 'Enter' ? '\n' : e.key;
+        if (typed.length !== 1) return;
+
+        if (sessionStateRef.current === 'idle') {
+            sessionStateRef.current = 'active';
             setSessionState('active');
             startTimeRef.current = Date.now();
             timerRef.current = setInterval(() => {
                 setTimeLeft(prev => {
                     if (prev <= 1) {
                         clearInterval(timerRef.current!);
-                        setTypedText(t => {
-                            finishSession(t, passage.passage_text, DURATION);
-                            return t;
-                        });
+                        finishSession(typedTextRef.current, content, DURATION);
                         return 0;
                     }
                     return prev - 1;
                 });
             }, 1000);
         }
-        setTypedText(value);
-        if (value.length === passage.passage_text.length) {
+
+        const newText = typedTextRef.current + typed;
+        typedTextRef.current = newText;
+        setTypedText(newText);
+
+        if (newText.length === content.length) {
             const secsSpent = Math.floor((Date.now() - startTimeRef.current) / 1000) || 1;
-            setTimeout(() => finishSession(value, passage.passage_text, secsSpent), 300);
+            setTimeout(() => finishSession(newText, content, secsSpent), 300);
         }
-    }, [passage, sessionState, finishSession]);
+    }, [passage, finishSession]);
 
     const reset = () => {
         if (timerRef.current) clearInterval(timerRef.current);
+        sessionStateRef.current = 'idle';
+        typedTextRef.current = '';
         setSessionState('idle');
         setTypedText('');
         setTimeLeft(DURATION);
@@ -241,7 +267,7 @@ export default function SpeedPracticeSession() {
                     <Typography sx={{ fontSize: 20, fontWeight: 900, color: timeLeft <= 60 ? '#d13438' : '#2b579a', fontFamily: 'monospace' }}>{timeStr}</Typography>
                     <Typography sx={{ fontSize: 9, color: '#605e5c', textTransform: 'uppercase' }}>Remaining Time</Typography>
                 </Box>
-                <Button variant="contained" onClick={() => finishSession(typedText, passage.passage_text, DURATION - timeLeft)} sx={{ bgcolor: '#2b579a', '&:hover': { bgcolor: '#1d4080' }, textTransform: 'none', fontWeight: 600 }}>Submit Passage</Button>
+                <Button variant="contained" onClick={() => finishSession(typedTextRef.current, passage.passage_text, DURATION - timeLeft)} sx={{ bgcolor: '#2b579a', '&:hover': { bgcolor: '#1d4080' }, textTransform: 'none', fontWeight: 600 }}>Submit Passage</Button>
             </Box>
 
             {/* Ruler */}
@@ -278,7 +304,7 @@ export default function SpeedPracticeSession() {
                             ))}
                             <span style={{ display: 'inline-block', width: 2, height: '1.2em', backgroundColor: '#2563eb', marginLeft: 1, verticalAlign: 'text-bottom', animation: 'blink 1s step-end infinite' }} />
                         </Box>
-                        <textarea ref={textareaRef} value={typedText} onChange={handleTyping} autoFocus spellCheck={false} onPaste={(e) => e.preventDefault()} onCopy={(e) => e.preventDefault()} onCut={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} style={{ position: 'absolute', top: '72px', left: '72px', width: 'calc(100% - 144px)', minHeight: 'calc(100% - 144px)', fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : '"Times New Roman", Times, serif', fontSize: isMarathi ? 22 : 14, lineHeight: 1.9, color: 'transparent', caretColor: 'transparent', background: 'transparent', border: 'none', outline: 'none', resize: 'none', zIndex: 3, whiteSpace: 'pre-wrap', textAlign: 'justify', overflow: 'hidden' }} />
+                        <textarea ref={textareaRef} value={typedText} onChange={() => {}} onKeyDown={handleKeyDown} autoFocus spellCheck={false} onPaste={(e) => e.preventDefault()} onCopy={(e) => e.preventDefault()} onCut={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} style={{ position: 'absolute', top: '72px', left: '72px', width: 'calc(100% - 144px)', minHeight: 'calc(100% - 144px)', fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : '"Times New Roman", Times, serif', fontSize: isMarathi ? 22 : 14, lineHeight: 1.9, color: 'transparent', caretColor: 'transparent', background: 'transparent', border: 'none', outline: 'none', resize: 'none', zIndex: 3, whiteSpace: 'pre-wrap', textAlign: 'justify', overflow: 'hidden' }} />
                         {sessionState === 'idle' && typedText.length === 0 && (
                             <Box sx={{ position: 'absolute', inset: 0, zIndex: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(255,255,255,0.9)', cursor: 'text' }} onClick={() => textareaRef.current?.focus()}>
                                 <Typography sx={{ fontWeight: 600, color: '#2b579a', mb: 1 }}>Click to Start Typing</Typography>
