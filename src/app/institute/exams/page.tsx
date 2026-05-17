@@ -135,8 +135,8 @@ export default function ExamsPage() {
       }
       map.get(key)!.exams.push(e);
     }
-    // Sort groups by date asc then time asc
-    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
+    // Sort groups chronologically using key (YYYY-MM-DD_HH:mm_batchId — 24h format)
+    return Array.from(map.values()).sort((a, b) => a.key.localeCompare(b.key));
   }, [visibleExams]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
