@@ -18,13 +18,18 @@ import {
 } from '@mui/icons-material';
 import AdminLayout from '../../components/AdminLayout';
 import { instituteAdminMenuItems } from '../../components/menuItems';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, addDays } from 'date-fns';
 import { generateAdmitCardHtml } from '../../../utils/generateAdmitCardHtml';
+
+/** Compute the minimum selectable exam date (6 days from today) as YYYY-MM-DD */
+function getMinExamDate(): string {
+  return format(addDays(new Date(), 6), 'yyyy-MM-dd');
+}
 
 interface ExamRow {
   id: string; student_name: string; enrollment: string;
   course_name: string; batch_id: string; batch_name: string;
-  exam_date: string; start_time: string; status: string;
+  exam_date: string; start_time: string; reporting_time: string; status: string;
   attendance: string; system_name: string; center_code: string;
 }
 interface Batch { id: string; batch_name: string; batch_code: string; course_id: string; course_name?: string; }
@@ -256,12 +261,21 @@ export default function ExamsPage() {
     },
     {
       field: 'attendance', headerName: 'Attendance', width: 150,
-      renderCell: p => p.value === 'pending' ? (
-        <Stack direction="row" spacing={0.5}>
-          <Tooltip title="Mark Present"><IconButton size="small" color="success" onClick={() => markAttendance(p.row.id, 'present')}><HowToReg fontSize="small" /></IconButton></Tooltip>
-          <Tooltip title="Mark Absent"><IconButton size="small" color="error" onClick={() => markAttendance(p.row.id, 'absent')}><PersonOff fontSize="small" /></IconButton></Tooltip>
-        </Stack>
-      ) : <Chip label={p.value?.toUpperCase()} size="small" variant="outlined" color={p.value === 'present' ? 'success' : 'error'} />
+      renderCell: p => {
+        // Show attendance buttons only once current time >= reporting_time
+        const reportingTime = p.row.reporting_time ? new Date(p.row.reporting_time) : null;
+        const canMark = reportingTime ? new Date() >= reportingTime : true;
+        if (p.value === 'pending') {
+          if (!canMark) return <Chip label="NOT YET" size="small" variant="outlined" color="default" />;
+          return (
+            <Stack direction="row" spacing={0.5}>
+              <Tooltip title="Mark Present"><IconButton size="small" color="success" onClick={() => markAttendance(p.row.id, 'present')}><HowToReg fontSize="small" /></IconButton></Tooltip>
+              <Tooltip title="Mark Absent"><IconButton size="small" color="error" onClick={() => markAttendance(p.row.id, 'absent')}><PersonOff fontSize="small" /></IconButton></Tooltip>
+            </Stack>
+          );
+        }
+        return <Chip label={p.value?.toUpperCase()} size="small" variant="outlined" color={p.value === 'present' ? 'success' : 'error'} />;
+      }
     },
     {
       field: 'admit_card', headerName: 'Admit Card', width: 110, sortable: false,
@@ -383,23 +397,31 @@ export default function ExamsPage() {
                         <Chip size="small" label={e.status?.replace('_', ' ').toUpperCase()} color={statusColor(e.status)} />
                       </TableCell>
                       <TableCell>
-                        {e.attendance === 'pending' ? (
-                          <Stack direction="row" spacing={0.5}>
-                            <Tooltip title="Mark Present">
-                              <IconButton size="small" color="success" onClick={() => markAttendance(e.id, 'present')}>
-                                <HowToReg fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Mark Absent">
-                              <IconButton size="small" color="error" onClick={() => markAttendance(e.id, 'absent')}>
-                                <PersonOff fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </Stack>
-                        ) : (
-                          <Chip size="small" label={e.attendance?.toUpperCase()} variant="outlined"
-                            color={e.attendance === 'present' ? 'success' : 'error'} />
-                        )}
+                        {(() => {
+                          const reportingTime = e.reporting_time ? new Date(e.reporting_time) : null;
+                          const canMark = reportingTime ? new Date() >= reportingTime : true;
+                          if (e.attendance === 'pending') {
+                            if (!canMark) return <Chip size="small" label="NOT YET" variant="outlined" color="default" />;
+                            return (
+                              <Stack direction="row" spacing={0.5}>
+                                <Tooltip title="Mark Present">
+                                  <IconButton size="small" color="success" onClick={() => markAttendance(e.id, 'present')}>
+                                    <HowToReg fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Mark Absent">
+                                  <IconButton size="small" color="error" onClick={() => markAttendance(e.id, 'absent')}>
+                                    <PersonOff fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              </Stack>
+                            );
+                          }
+                          return (
+                            <Chip size="small" label={e.attendance?.toUpperCase()} variant="outlined"
+                              color={e.attendance === 'present' ? 'success' : 'error'} />
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
                         <Button size="small" variant="outlined" startIcon={<Print fontSize="small" />}
@@ -575,7 +597,8 @@ export default function ExamsPage() {
 
                 <Stack direction="row" spacing={2}>
                   <TextField fullWidth type="date" label="Exam Date *" InputLabelProps={{ shrink: true }}
-                    value={examDate} onChange={e => setExamDate(e.target.value)} helperText="Min 6 days from today" />
+                    value={examDate} onChange={e => setExamDate(e.target.value)} helperText="Min 6 days from today"
+                    inputProps={{ min: getMinExamDate() }} />
                   <TextField fullWidth type="time" label="Start Time *" InputLabelProps={{ shrink: true }}
                     value={startTime} onChange={e => setStartTime(e.target.value)} />
                 </Stack>
@@ -653,7 +676,8 @@ export default function ExamsPage() {
         <DialogContent sx={{ pt: 3 }}>
           <Stack spacing={2.5}>
             <TextField fullWidth type="date" label="New Exam Date *" InputLabelProps={{ shrink: true }}
-              value={newDate} onChange={e => setNewDate(e.target.value)} helperText="Min 6 days from today" />
+              value={newDate} onChange={e => setNewDate(e.target.value)} helperText="Min 6 days from today"
+              inputProps={{ min: getMinExamDate() }} />
             <TextField fullWidth type="time" label="New Start Time *" InputLabelProps={{ shrink: true }}
               value={newTime} onChange={e => setNewTime(e.target.value)} />
             {rescheduleError && <Alert severity="error">{rescheduleError}</Alert>}
