@@ -37,6 +37,16 @@ interface Student { id: string; name: string; enrollment_number: string; has_pho
 interface SystemItem { id: string; system_name: string; }
 interface ExamGroup { key: string; label: string; date: string; time: string; course: string; batch: string; exams: ExamRow[]; }
 
+/* ── Nested hierarchy types ── */
+interface SlotGroup {
+  key: string; date: string; dateLabel: string; time: string; timeLabel: string;
+  exams: ExamRow[];
+}
+interface BatchHierarchy {
+  batchId: string; batchName: string; course: string;
+  slots: SlotGroup[]; totalExams: number;
+}
+
 function statusColor(s: string) {
   if (s === 'completed') return 'success';
   if (s === 'in_progress') return 'warning';
@@ -137,6 +147,37 @@ export default function ExamsPage() {
     }
     // Sort groups chronologically using key (YYYY-MM-DD_HH:mm_batchId — 24h format)
     return Array.from(map.values()).sort((a, b) => a.key.localeCompare(b.key));
+  }, [visibleExams]);
+
+  // ── Build Batch → Slot hierarchy for nested grouped view ────────────────
+  const batchHierarchy = useMemo<BatchHierarchy[]>(() => {
+    const map = new Map<string, BatchHierarchy>();
+    for (const e of visibleExams) {
+      const bKey = e.batch_id || 'unknown';
+      if (!map.has(bKey)) {
+        map.set(bKey, {
+          batchId: bKey, batchName: e.batch_name, course: e.course_name,
+          slots: [], totalExams: 0,
+        });
+      }
+      const batchGrp = map.get(bKey)!;
+      batchGrp.totalExams++;
+
+      const slotTime = e.start_time ? format(parseISO(e.start_time), 'HH:mm') : '??:??';
+      const slotKey = `${e.exam_date}_${slotTime}`;
+      let slot = batchGrp.slots.find(s => s.key === slotKey);
+      if (!slot) {
+        const dateLabel = e.exam_date ? format(parseISO(e.exam_date), 'dd MMM yyyy (EEEE)') : '—';
+        const timeLabel = e.start_time ? format(parseISO(e.start_time), 'hh:mm a') : '—';
+        slot = { key: slotKey, date: e.exam_date, dateLabel, time: slotTime, timeLabel, exams: [] };
+        batchGrp.slots.push(slot);
+      }
+      slot.exams.push(e);
+    }
+    for (const b of map.values()) {
+      b.slots.sort((a, b) => a.key.localeCompare(b.key));
+    }
+    return Array.from(map.values()).sort((a, b) => a.batchName.localeCompare(b.batchName));
   }, [visibleExams]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
@@ -305,150 +346,177 @@ export default function ExamsPage() {
     },
   ];
 
-  // ── Grouped view component ─────────────────────────────────────────────────
+  // ── Grouped view component (Batch → Date/Slot → Students) ──────────────────
   const GroupedView = () => (
     <Stack spacing={1.5}>
-      {groups.length === 0 && (
+      {batchHierarchy.length === 0 && (
         <Paper variant="outlined" sx={{ p: 6, textAlign: 'center', borderRadius: 2 }}>
           <Typography color="text.secondary">No exams found.</Typography>
         </Paper>
       )}
-      {groups.map((g, gi) => {
-        const allGroupScheduled = g.exams.every(e => e.status === 'scheduled');
-        const presentCount = g.exams.filter(e => e.attendance === 'present').length;
-        const absentCount = g.exams.filter(e => e.attendance === 'absent').length;
+      {batchHierarchy.map((batch, bi) => {
+        const allScheduled = visibleExams.filter(e => e.batch_id === batch.batchId).every(e => e.status === 'scheduled');
+        const presentCount = visibleExams.filter(e => e.batch_id === batch.batchId && e.attendance === 'present').length;
+        const absentCount = visibleExams.filter(e => e.batch_id === batch.batchId && e.attendance === 'absent').length;
+
         return (
-          <Accordion key={g.key} defaultExpanded={gi === 0} variant="outlined"
-            sx={{ borderRadius: '8px !important', '&:before': { display: 'none' } }}>
+          /* ═══ LEVEL 1: BATCH ═══ */
+          <Accordion key={batch.batchId} defaultExpanded={bi === 0} variant="outlined"
+            sx={{ borderRadius: '10px !important', '&:before': { display: 'none' }, overflow: 'hidden' }}>
             <AccordionSummary expandIcon={<ExpandMore />}
-              sx={{ borderRadius: 2, bgcolor: 'grey.50', '&.Mui-expanded': { bgcolor: 'primary.50' } }}>
+              sx={{ bgcolor: 'primary.50', '&.Mui-expanded': { bgcolor: 'primary.100' } }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', pr: 1, flexWrap: 'wrap' }}>
-                {/* Date + Time */}
-                <Box sx={{ minWidth: 200 }}>
-                  <Typography variant="subtitle2" fontWeight={700}>{g.date}</Typography>
-                  <Stack direction="row" spacing={0.5} alignItems="center">
-                    <AccessTime fontSize="inherit" color="action" />
-                    <Typography variant="caption" color="text.secondary">{g.time}</Typography>
-                  </Stack>
+                <Avatar sx={{ bgcolor: 'primary.main', width: 36, height: 36 }}>
+                  <Group fontSize="small" />
+                </Avatar>
+                <Box sx={{ flex: 1, minWidth: 200 }}>
+                  <Typography variant="subtitle1" fontWeight={800}>{batch.batchName}</Typography>
+                  <Typography variant="caption" color="text.secondary">{batch.course}</Typography>
                 </Box>
-
-                {/* Course + Batch */}
-                <Box sx={{ minWidth: 160 }}>
-                  <Typography variant="body2" fontWeight={600}>{g.course}</Typography>
-                  <Typography variant="caption" color="text.secondary">{g.batch}</Typography>
-                </Box>
-
-                {/* Chips */}
-                <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ ml: 1 }}>
-                  <Chip size="small" label={`${g.exams.length} students`} color="primary" variant="outlined" />
+                <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                  <Chip size="small" label={`${batch.totalExams} student${batch.totalExams !== 1 ? 's' : ''}`} color="primary" variant="outlined" />
+                  <Chip size="small" label={`${batch.slots.length} slot${batch.slots.length !== 1 ? 's' : ''}`} variant="outlined" />
                   {presentCount > 0 && <Chip size="small" label={`${presentCount} present`} color="success" />}
                   {absentCount > 0 && <Chip size="small" label={`${absentCount} absent`} color="error" />}
-                  {g.exams.some(e => e.status === 'completed') && (
-                    <Chip size="small" label="Completed" color="success" variant="filled" />
-                  )}
                 </Stack>
-
-                {/* Group-level bulk actions */}
-                {allGroupScheduled && (
-                  <Stack direction="row" spacing={1} sx={{ ml: 'auto' }} onClick={e => e.stopPropagation()}>
+                {/* Batch-level bulk actions */}
+                {allScheduled && (
+                  <Stack direction="row" spacing={1} sx={{ ml: 1 }} onClick={ev => ev.stopPropagation()}>
                     <Button size="small" variant="outlined" startIcon={<EditCalendar fontSize="small" />}
-                      onClick={() => openReschedule(g.exams.map(e => e.id))}>
+                      onClick={() => openReschedule(visibleExams.filter(e => e.batch_id === batch.batchId).map(e => e.id))}>
                       Reschedule All
                     </Button>
                     <Button size="small" variant="outlined" color="error" startIcon={<DeleteForever fontSize="small" />}
-                      onClick={() => openDelete(g.exams.map(e => e.id))}>
+                      onClick={() => openDelete(visibleExams.filter(e => e.batch_id === batch.batchId).map(e => e.id))}>
                       Delete All
                     </Button>
                   </Stack>
                 )}
               </Box>
             </AccordionSummary>
-
-            <AccordionDetails sx={{ p: 0 }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow sx={{ bgcolor: 'grey.50' }}>
-                    <TableCell sx={{ fontWeight: 700, width: 50 }}>#</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Student</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>System</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Attendance</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Admit Card</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {g.exams.map((e, idx) => (
-                    <TableRow key={e.id} hover>
-                      <TableCell>
-                        <Typography variant="caption" color="text.secondary">{idx + 1}</Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" fontWeight={600}>{e.student_name}</Typography>
-                        <Typography variant="caption" color="text.secondary">{e.enrollment}</Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Chip size="small" icon={<Computer fontSize="inherit" />}
-                          label={e.system_name !== '—' ? e.system_name : 'Not assigned'}
-                          variant="outlined"
-                          color={e.system_name !== '—' ? 'default' : 'warning'} />
-                      </TableCell>
-                      <TableCell>
-                        <Chip size="small" label={e.status?.replace('_', ' ').toUpperCase()} color={statusColor(e.status)} />
-                      </TableCell>
-                      <TableCell>
-                        {(() => {
-                          const reportingTime = e.reporting_time ? new Date(e.reporting_time) : null;
-                          const canMark = reportingTime ? new Date() >= reportingTime : true;
-                          if (e.attendance === 'pending') {
-                            if (!canMark) return <Chip size="small" label="NOT YET" variant="outlined" color="default" />;
-                            return (
-                              <Stack direction="row" spacing={0.5}>
-                                <Tooltip title="Mark Present">
-                                  <IconButton size="small" color="success" onClick={() => markAttendance(e.id, 'present')}>
-                                    <HowToReg fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                                <Tooltip title="Mark Absent">
-                                  <IconButton size="small" color="error" onClick={() => markAttendance(e.id, 'absent')}>
-                                    <PersonOff fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                              </Stack>
-                            );
-                          }
-                          return (
-                            <Chip size="small" label={e.attendance?.toUpperCase()} variant="outlined"
-                              color={e.attendance === 'present' ? 'success' : 'error'} />
-                          );
-                        })()}
-                      </TableCell>
-                      <TableCell>
-                        <Button size="small" variant="outlined" startIcon={<Print fontSize="small" />}
-                          onClick={() => printAdmitCard(e.id)} sx={{ fontSize: 11 }}>
-                          Print
-                        </Button>
-                      </TableCell>
-                      <TableCell>
-                        <Stack direction="row" spacing={0.5}>
-                          <Tooltip title="Reschedule">
-                            <IconButton size="small" color="primary"
-                              disabled={e.status !== 'scheduled'} onClick={() => openReschedule([e.id])}>
-                              <Edit fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Delete">
-                            <IconButton size="small" color="error"
-                              disabled={e.status !== 'scheduled'} onClick={() => openDelete([e.id])}>
-                              <Delete fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
+            <AccordionDetails sx={{ p: 0, pl: 1 }}>
+              {batch.slots.map((slot, si) => {
+                const slotAllScheduled = slot.exams.every(e => e.status === 'scheduled');
+                return (
+                  /* ═══ LEVEL 2: DATE / TIME SLOT ═══ */
+                  <Accordion key={slot.key} defaultExpanded={batch.slots.length <= 4 || si === 0} variant="outlined"
+                    sx={{ my: 0.5, mx: 1, borderRadius: '8px !important', '&:before': { display: 'none' } }}>
+                    <AccordionSummary expandIcon={<ExpandMore />}
+                      sx={{ minHeight: 44, '& .MuiAccordionSummary-content': { my: 0.5 }, bgcolor: 'grey.50', '&.Mui-expanded': { bgcolor: 'action.hover' } }}>
+                      <Stack direction="row" spacing={2} alignItems="center" sx={{ width: '100%', pr: 1, flexWrap: 'wrap' }}>
+                        <Stack direction="row" spacing={0.5} alignItems="center">
+                          <Event fontSize="small" color="action" />
+                          <Typography variant="body2" fontWeight={700}>{slot.dateLabel}</Typography>
                         </Stack>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                        <Stack direction="row" spacing={0.5} alignItems="center">
+                          <AccessTime fontSize="small" color="action" />
+                          <Typography variant="body2" fontWeight={600} color="primary.main">{slot.timeLabel}</Typography>
+                        </Stack>
+                        <Chip size="small" label={`${slot.exams.length} student${slot.exams.length !== 1 ? 's' : ''}`} variant="outlined" />
+                        {slotAllScheduled && (
+                          <Stack direction="row" spacing={0.5} sx={{ ml: 'auto' }} onClick={ev => ev.stopPropagation()}>
+                            <Button size="small" variant="text" startIcon={<EditCalendar fontSize="inherit" />}
+                              onClick={() => openReschedule(slot.exams.map(e => e.id))} sx={{ fontSize: 11 }}>
+                              Reschedule
+                            </Button>
+                            <Button size="small" variant="text" color="error" startIcon={<DeleteForever fontSize="inherit" />}
+                              onClick={() => openDelete(slot.exams.map(e => e.id))} sx={{ fontSize: 11 }}>
+                              Delete
+                            </Button>
+                          </Stack>
+                        )}
+                      </Stack>
+                    </AccordionSummary>
+                    <AccordionDetails sx={{ p: 0 }}>
+                      {/* ═══ LEVEL 3: STUDENTS TABLE ═══ */}
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow sx={{ bgcolor: 'grey.50' }}>
+                            <TableCell sx={{ fontWeight: 700, width: 40 }}>#</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>Student</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>System</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>Attendance</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>Admit Card</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {slot.exams.map((e, idx) => (
+                            <TableRow key={e.id} hover>
+                              <TableCell>
+                                <Typography variant="caption" color="text.secondary">{idx + 1}</Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" fontWeight={600}>{e.student_name}</Typography>
+                                <Typography variant="caption" color="text.secondary">{e.enrollment}</Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Chip size="small" icon={<Computer fontSize="inherit" />}
+                                  label={e.system_name !== '—' ? e.system_name : 'Not assigned'}
+                                  variant="outlined"
+                                  color={e.system_name !== '—' ? 'default' : 'warning'} />
+                              </TableCell>
+                              <TableCell>
+                                <Chip size="small" label={e.status?.replace('_', ' ').toUpperCase()} color={statusColor(e.status)} />
+                              </TableCell>
+                              <TableCell>
+                                {(() => {
+                                  const reportingTime = e.reporting_time ? new Date(e.reporting_time) : null;
+                                  const canMark = reportingTime ? new Date() >= reportingTime : true;
+                                  if (e.attendance === 'pending') {
+                                    if (!canMark) return <Chip size="small" label="NOT YET" variant="outlined" color="default" />;
+                                    return (
+                                      <Stack direction="row" spacing={0.5}>
+                                        <Tooltip title="Mark Present">
+                                          <IconButton size="small" color="success" onClick={() => markAttendance(e.id, 'present')}>
+                                            <HowToReg fontSize="small" />
+                                          </IconButton>
+                                        </Tooltip>
+                                        <Tooltip title="Mark Absent">
+                                          <IconButton size="small" color="error" onClick={() => markAttendance(e.id, 'absent')}>
+                                            <PersonOff fontSize="small" />
+                                          </IconButton>
+                                        </Tooltip>
+                                      </Stack>
+                                    );
+                                  }
+                                  return (
+                                    <Chip size="small" label={e.attendance?.toUpperCase()} variant="outlined"
+                                      color={e.attendance === 'present' ? 'success' : 'error'} />
+                                  );
+                                })()}
+                              </TableCell>
+                              <TableCell>
+                                <Button size="small" variant="outlined" startIcon={<Print fontSize="small" />}
+                                  onClick={() => printAdmitCard(e.id)} sx={{ fontSize: 11 }}>
+                                  Print
+                                </Button>
+                              </TableCell>
+                              <TableCell>
+                                <Stack direction="row" spacing={0.5}>
+                                  <Tooltip title="Reschedule">
+                                    <IconButton size="small" color="primary"
+                                      disabled={e.status !== 'scheduled'} onClick={() => openReschedule([e.id])}>
+                                      <Edit fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                  <Tooltip title="Delete">
+                                    <IconButton size="small" color="error"
+                                      disabled={e.status !== 'scheduled'} onClick={() => openDelete([e.id])}>
+                                      <Delete fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                </Stack>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </AccordionDetails>
+                  </Accordion>
+                );
+              })}
             </AccordionDetails>
           </Accordion>
         );
