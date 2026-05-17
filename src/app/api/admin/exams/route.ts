@@ -1,5 +1,5 @@
 import { createClient } from '@/utils/supabase/server';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 
 function getAdmin() {
@@ -86,6 +86,50 @@ export async function GET() {
         });
 
         return NextResponse.json({ exams });
+    } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 500 });
+    }
+}
+
+// ── PATCH — Super Admin reschedule (NO 6-day restriction) ─────────────────
+// Body: { ids: string[], newExamDate: "YYYY-MM-DD", newStartTime: "HH:mm" }
+
+export async function PATCH(req: NextRequest) {
+    try {
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+        const body = await req.json();
+        const { ids, newExamDate, newStartTime } = body;
+
+        if (!ids?.length) return NextResponse.json({ error: 'ids required' }, { status: 400 });
+        if (!newExamDate || !newStartTime) {
+            return NextResponse.json({ error: 'newExamDate and newStartTime are required' }, { status: 400 });
+        }
+
+        const admin = getAdmin();
+
+        // Build timestamps — treat input as IST wall-clock
+        const startDT = new Date(`${newExamDate}T${newStartTime}:00+05:30`);
+        const EXAM_DURATION_MINUTES = 50;
+        const endDT = new Date(startDT.getTime() + EXAM_DURATION_MINUTES * 60 * 1000);
+        const reportingDT = new Date(startDT.getTime() - 30 * 60 * 1000);
+        const gateDT = new Date(startDT.getTime() - 5 * 60 * 1000);
+
+        const { error } = await admin
+            .from('exams')
+            .update({
+                exam_date: newExamDate,
+                start_time: startDT.toISOString(),
+                end_time: endDT.toISOString(),
+                reporting_time: reportingDT.toISOString(),
+                gate_closing_time: gateDT.toISOString(),
+            })
+            .in('id', ids);
+
+        if (error) throw error;
+        return NextResponse.json({ success: true, message: `Updated ${ids.length} exam(s) to ${newExamDate} at ${newStartTime}.` });
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
     }

@@ -5,12 +5,13 @@ import {
   Box, Typography, Tabs, Tab, Chip, CircularProgress, Alert,
   Accordion, AccordionSummary, AccordionDetails, Stack, Paper,
   Avatar, Table, TableBody, TableCell, TableHead, TableRow,
-  IconButton, Tooltip, Divider,
+  IconButton, Tooltip, Divider, Button, Dialog, DialogTitle,
+  DialogContent, DialogActions, TextField, Snackbar,
 } from '@mui/material';
 import {
   ExpandMore, Business, School, Event, AccessTime,
   Computer, HowToReg, PersonOff, Schedule, CheckCircle,
-  Refresh,
+  Refresh, EditCalendar,
 } from '@mui/icons-material';
 import AdminLayout from '../../components/AdminLayout';
 import { superAdminMenuItems } from '../../components/menuItems';
@@ -64,6 +65,15 @@ export default function ExamManagement() {
   const [exams, setExams] = useState<ExamRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  // ── Reschedule dialog state ──
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [rescheduleIds, setRescheduleIds] = useState<string[]>([]);
+  const [newDate, setNewDate] = useState('');
+  const [newTime, setNewTime] = useState('');
+  const [rescheduleError, setRescheduleError] = useState('');
+  const [rescheduleSaving, setRescheduleSaving] = useState(false);
 
   const fetchExams = () => {
     setLoading(true); setError('');
@@ -132,6 +142,36 @@ export default function ExamManagement() {
   }, [visibleExams]);
 
   const todayExams = exams.filter(e => e.examDate === today);
+
+  // ── Reschedule handlers ──
+  const openReschedule = (ids: string[]) => {
+    setRescheduleIds(ids);
+    setNewDate('');
+    setNewTime('');
+    setRescheduleError('');
+    setRescheduleOpen(true);
+  };
+
+  const handleReschedule = async () => {
+    if (!newDate || !newTime) { setRescheduleError('Please set both date and time.'); return; }
+    setRescheduleSaving(true); setRescheduleError('');
+    try {
+      const res = await fetch('/api/admin/exams', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: rescheduleIds, newExamDate: newDate, newStartTime: newTime }),
+      });
+      const j = await res.json();
+      if (!res.ok || j.error) throw new Error(j.error || 'Failed');
+      setSuccessMsg(j.message || `Rescheduled ${rescheduleIds.length} exam(s) successfully.`);
+      setRescheduleOpen(false);
+      fetchExams();
+    } catch (err: any) {
+      setRescheduleError(err.message);
+    } finally {
+      setRescheduleSaving(false);
+    }
+  };
 
   return (
     <AdminLayout menuItems={superAdminMenuItems} title="Super Admin Panel">
@@ -212,6 +252,12 @@ export default function ExamManagement() {
                           color="info" variant="outlined" />
                         <Chip size="small" label={`${batch.slots.length} slot${batch.slots.length !== 1 ? 's' : ''}`}
                           variant="outlined" />
+                        {/* Batch-level Set Exam Date */}
+                        <Button size="small" variant="outlined" startIcon={<EditCalendar fontSize="small" />}
+                          onClick={(ev) => { ev.stopPropagation(); openReschedule(batch.slots.flatMap(s => s.exams.map(e => e.id))); }}
+                          sx={{ ml: 1, textTransform: 'none' }}>
+                          Set Exam Date
+                        </Button>
                       </Box>
                     </AccordionSummary>
                     <AccordionDetails sx={{ p: 0, pl: 1 }}>
@@ -240,6 +286,12 @@ export default function ExamManagement() {
                                 <Chip size="small" label={`${slot.exams.filter(e => e.attendance === 'absent').length} absent`}
                                   color="error" sx={{ height: 22 }} />
                               )}
+                              {/* Slot-level Set Exam Date */}
+                              <Button size="small" variant="text" startIcon={<EditCalendar fontSize="inherit" />}
+                                onClick={(ev) => { ev.stopPropagation(); openReschedule(slot.exams.map(e => e.id)); }}
+                                sx={{ ml: 1, fontSize: 11, textTransform: 'none' }}>
+                                Set Date
+                              </Button>
                             </Stack>
                           </AccordionSummary>
                           <AccordionDetails sx={{ p: 0 }}>
@@ -300,6 +352,38 @@ export default function ExamManagement() {
           ))}
         </Stack>
       )}
+
+      {/* ── Reschedule Dialog (Super Admin — NO 6-day restriction) ── */}
+      <Dialog open={rescheduleOpen} onClose={() => setRescheduleOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <EditCalendar color="primary" />
+            <span>Set Exam Date</span>
+          </Stack>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <Stack spacing={2.5}>
+            <Alert severity="info" variant="outlined">
+              Super Admin override — no minimum lead time. Setting date for <strong>{rescheduleIds.length}</strong> exam(s).
+            </Alert>
+            <TextField fullWidth type="date" label="New Exam Date *" InputLabelProps={{ shrink: true }}
+              value={newDate} onChange={e => setNewDate(e.target.value)} />
+            <TextField fullWidth type="time" label="New Start Time *" InputLabelProps={{ shrink: true }}
+              value={newTime} onChange={e => setNewTime(e.target.value)} />
+            {rescheduleError && <Alert severity="error">{rescheduleError}</Alert>}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setRescheduleOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleReschedule} disabled={rescheduleSaving}>
+            {rescheduleSaving ? <CircularProgress size={20} /> : 'Set Date'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Success snackbar */}
+      <Snackbar open={!!successMsg} autoHideDuration={5000} onClose={() => setSuccessMsg('')}
+        message={successMsg} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </AdminLayout>
   );
 }
