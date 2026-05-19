@@ -93,22 +93,35 @@ export async function GET(req: NextRequest) {
             if (stu_batch) batchName = stu_batch.batch_name;
         }
 
-        // 5. Compute times
+        // 5. Compute times — all IST-explicit (server is UTC on Vercel)
+        const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
+
+        const fmt12IST = (d: Date | null): string => {
+            if (!d) return '—';
+            const ist = new Date(d.getTime() + IST_OFFSET_MS);
+            let h = ist.getUTCHours();
+            const m = String(ist.getUTCMinutes()).padStart(2, '0');
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            if (h > 12) h -= 12;
+            if (h === 0) h = 12;
+            return `${String(h).padStart(2, '0')}:${m} ${ampm}`;
+        };
+
+        // Parse date string "YYYY-MM-DD" directly — no timezone ambiguity
+        const fmtDateStr = (s: string | null): string => {
+            if (!s) return '—';
+            const parts = s.split('-');
+            if (parts.length !== 3) return s;
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            const d = parseInt(parts[2], 10);
+            const mo = parseInt(parts[1], 10) - 1;
+            const y = parts[0];
+            return `${String(d).padStart(2, '0')}-${months[mo]}-${y}`;
+        };
+
         const startTime = (exam as any).start_time ? new Date((exam as any).start_time) : null;
         const reportingTime = startTime ? new Date(startTime.getTime() - 30 * 60 * 1000) : null;
         const gateClosingTime = startTime ? new Date(startTime.getTime() - 5 * 60 * 1000) : null;
-
-        const fmt12 = (d: Date | null) => {
-            if (!d) return '—';
-            return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-        };
-
-        const fmtDate = (s: string | null) => {
-            if (!s) return '—';
-            const d = new Date(s);
-            return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-                .replace(/ /g, '-');
-        };
 
         const examObj = exam as any;
         const system = examObj.institute_systems;
@@ -121,10 +134,10 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({
             admit: {
                 examId: exam.id,
-                examDate: fmtDate((exam as any).exam_date),
-                reportingTime: fmt12(reportingTime),
-                gateClosingTime: fmt12(gateClosingTime),
-                examStartTime: fmt12(startTime),
+                examDate: fmtDateStr((exam as any).exam_date),
+                reportingTime: fmt12IST(reportingTime),
+                gateClosingTime: fmt12IST(gateClosingTime),
+                examStartTime: fmt12IST(startTime),
                 examDuration: examObj.exam_patterns?.duration_minutes
                     ? `${examObj.exam_patterns.duration_minutes} Minutes`
                     : '75 Minutes',

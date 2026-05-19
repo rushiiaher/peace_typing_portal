@@ -115,7 +115,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
                     result: 'pass',
                     total_marks_obtained: results?.totalMarks || 0
                 }),
-                ...(status === 'in_progress' && { start_time: new Date().toISOString() })
+                // NOTE: start_time is the SCHEDULED time — do NOT overwrite it when going in_progress
             })
             .eq('id', id)
             .eq('student_id', user.id)
