@@ -7,7 +7,7 @@ import {
   Stack, Checkbox, ListItemText, Alert, CircularProgress,
   Tooltip, IconButton, Card, CardContent, Grid, Chip, Paper, Avatar,
   Accordion, AccordionSummary, AccordionDetails, ToggleButtonGroup, ToggleButton,
-  Table, TableBody, TableCell, TableHead, TableRow,
+  Table, TableBody, TableCell, TableHead, TableRow, Snackbar,
 } from '@mui/material';
 import { DataGrid, GridColDef, GridRowSelectionModel } from '@mui/x-data-grid';
 import {
@@ -85,6 +85,7 @@ export default function ExamsPage() {
   const [newTime, setNewTime] = useState('10:00');
   const [rescheduleSaving, setRescheduleSaving] = useState(false);
   const [rescheduleError, setRescheduleError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
   // Delete confirm dialog
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -241,6 +242,7 @@ export default function ExamsPage() {
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || 'Reschedule failed');
+      setSuccessMsg(j.message || `Rescheduled ${rescheduleIds.length} exam(s) successfully.`);
       setRescheduleOpen(false); setSelection([]); fetchExams();
     } catch (e: any) { setRescheduleError(e.message); }
     finally { setRescheduleSaving(false); }
@@ -776,6 +778,10 @@ export default function ExamsPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Success snackbar */}
+      <Snackbar open={!!successMsg} autoHideDuration={5000} onClose={() => setSuccessMsg('')}
+        message={successMsg} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
 
     </AdminLayout>
   );

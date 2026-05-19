@@ -110,12 +110,53 @@ export async function PATCH(req: NextRequest) {
 
         const admin = getAdmin();
 
+        const EXAM_DURATION_MINUTES = 50;
+        const COOLDOWN_MINUTES = 20;
+
         // Build timestamps — treat input as IST wall-clock
         const startDT = new Date(`${newExamDate}T${newStartTime}:00+05:30`);
-        const EXAM_DURATION_MINUTES = 50;
         const endDT = new Date(startDT.getTime() + EXAM_DURATION_MINUTES * 60 * 1000);
         const reportingDT = new Date(startDT.getTime() - 30 * 60 * 1000);
         const gateDT = new Date(startDT.getTime() - 5 * 60 * 1000);
+
+        // ── Conflict detection ────────────────────────────────────────────────
+        // Get system assignments for the exams being rescheduled
+        const { data: examRows, error: examRowsErr } = await admin
+            .from('exams')
+            .select('id, system_id')
+            .in('id', ids);
+        if (examRowsErr) throw examRowsErr;
+
+        const systemIds = [...new Set((examRows ?? []).map((e: any) => e.system_id).filter(Boolean))];
+
+        if (systemIds.length > 0) {
+            // Check overlap with cooldown window
+            const cooldownStart = new Date(startDT.getTime() - COOLDOWN_MINUTES * 60 * 1000);
+            const cooldownEnd = new Date(endDT.getTime() + COOLDOWN_MINUTES * 60 * 1000);
+
+            const { data: conflicting, error: cErr } = await admin
+                .from('exams')
+                .select('id, system_id, start_time, end_time')
+                .in('system_id', systemIds)
+                .not('id', 'in', `(${ids.join(',')})`)
+                .neq('status', 'cancelled')
+                .lt('start_time', cooldownEnd.toISOString())
+                .gt('end_time', cooldownStart.toISOString());
+            if (cErr) throw cErr;
+
+            if (conflicting && conflicting.length > 0) {
+                const conflictSysIds = [...new Set(conflicting.map((c: any) => c.system_id))];
+                const { data: sysNames } = await admin
+                    .from('institute_systems')
+                    .select('id, system_name')
+                    .in('id', conflictSysIds);
+                const sysNameMap = Object.fromEntries((sysNames ?? []).map((s: any) => [s.id, s.system_name]));
+                const details = conflictSysIds.map((sid: string) => sysNameMap[sid] || `System ${sid.slice(0, 8)}`).join(', ');
+                return NextResponse.json({
+                    error: `Scheduling conflict: ${conflicting.length} exam(s) already booked at this time slot (including ${COOLDOWN_MINUTES}-min cooldown). Systems busy: ${details}. Choose a different date or time.`
+                }, { status: 409 });
+            }
+        }
 
         const { error } = await admin
             .from('exams')
@@ -129,7 +170,7 @@ export async function PATCH(req: NextRequest) {
             .in('id', ids);
 
         if (error) throw error;
-        return NextResponse.json({ success: true, message: `Updated ${ids.length} exam(s) to ${newExamDate} at ${newStartTime}.` });
+        return NextResponse.json({ success: true, message: `Rescheduled ${ids.length} exam(s) to ${newExamDate} at ${newStartTime} (IST).` });
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
     }
