@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
     Box, Paper, Typography, Button, CircularProgress,
     Alert, Stepper, Step, StepLabel, Stack, Chip, Divider,
+    Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
 import {
     QuestionAnswer, Email, Description, TableChart, Speed, CheckCircle,
-    AccessTime, School, PlayArrow, HowToReg, Block,
+    AccessTime, School, PlayArrow, HowToReg, Block, Fullscreen, Warning,
 } from '@mui/icons-material';
 import ExamMCQEmail from '../../../../../components/exam/ExamMCQEmail';
 import ExamLetterStatement from '../../../../../components/exam/ExamLetterStatement';
@@ -30,6 +31,10 @@ export default function ExamSession() {
     const [examData, setExamData] = useState<any>(null);
     const [step, setStep] = useState(0); // 0: Intro, 1-3: sections, 4: done
     const [starting, setStarting] = useState(false);
+    const [fsWarning, setFsWarning] = useState(false);   // fullscreen-exit warning dialog
+    const [fsViolations, setFsViolations] = useState(0); // count of exits
+    const examContainerRef = useRef<HTMLDivElement>(null);
+    const examActiveRef = useRef(false); // true while exam is in progress (step 1-3)
 
     useEffect(() => {
         async function load() {
@@ -39,29 +44,84 @@ export default function ExamSession() {
                 if (!res.ok) throw new Error(j.error || 'Failed to load exam');
                 setExamData(j);
                 if (j.exam.status === 'completed') setStep(4);
-                else if (j.exam.status === 'in_progress') { setStep(1); }
+                else if (j.exam.status === 'in_progress') {
+                    examActiveRef.current = true;
+                    setStep(1);
+                }
             } catch (e: any) { setError(e.message); }
             finally { setLoading(false); }
         }
         load();
     }, [id]);
 
+    const enterFullscreen = useCallback(async () => {
+        const el = examContainerRef.current ?? document.documentElement;
+        try {
+            await (el as any).requestFullscreen?.() ??
+                (el as any).webkitRequestFullscreen?.() ??
+                (el as any).mozRequestFullScreen?.() ??
+                (el as any).msRequestFullscreen?.();
+        } catch { /* user denied — exam still starts */ }
+    }, []);
+
+    const exitFullscreen = useCallback(() => {
+        try {
+            (document as any).exitFullscreen?.() ??
+                (document as any).webkitExitFullscreen?.() ??
+                (document as any).mozCancelFullScreen?.() ??
+                (document as any).msExitFullscreen?.();
+        } catch { /* ignore */ }
+    }, []);
+
+    // Listen for fullscreen exits while exam is active
+    useEffect(() => {
+        const onFsChange = () => {
+            const isFs = !!(
+                document.fullscreenElement ??
+                (document as any).webkitFullscreenElement ??
+                (document as any).mozFullScreenElement
+            );
+            if (!isFs && examActiveRef.current) {
+                setFsViolations(v => v + 1);
+                setFsWarning(true);
+            }
+        };
+        document.addEventListener('fullscreenchange', onFsChange);
+        document.addEventListener('webkitfullscreenchange', onFsChange);
+        document.addEventListener('mozfullscreenchange', onFsChange);
+        return () => {
+            document.removeEventListener('fullscreenchange', onFsChange);
+            document.removeEventListener('webkitfullscreenchange', onFsChange);
+            document.removeEventListener('mozfullscreenchange', onFsChange);
+        };
+    }, []);
+
+    // Warn on tab/window blur while exam active
+    useEffect(() => {
+        const onBlur = () => { if (examActiveRef.current) setFsWarning(true); };
+        window.addEventListener('blur', onBlur);
+        return () => window.removeEventListener('blur', onBlur);
+    }, []);
+
     const startExam = async () => {
         setStarting(true);
         try {
-            // Use student's own API — NOT the institute API
             const res = await fetch(`/api/student/exams/${id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: 'in_progress' }),
             });
             if (!res.ok) throw new Error('Failed to start exam');
+            examActiveRef.current = true;
+            await enterFullscreen();
             setStep(1);
         } catch (e: any) { setError(e.message); }
         finally { setStarting(false); }
     };
 
     const finishExam = async (speedStats?: any) => {
+        examActiveRef.current = false;
+        exitFullscreen();
         try {
             await fetch(`/api/student/exams/${id}`, {
                 method: 'PATCH',
@@ -74,6 +134,11 @@ export default function ExamSession() {
         } catch { /* silent */ } finally {
             setStep(4);
         }
+    };
+
+    const reEnterFullscreen = async () => {
+        setFsWarning(false);
+        await enterFullscreen();
     };
 
     if (loading) return (
@@ -216,7 +281,7 @@ export default function ExamSession() {
 
     // ── Sections ──────────────────────────────────────────────────────────────
     return (
-        <Box sx={{ maxWidth: '100%', p: { xs: 1, md: 2 } }}>
+        <Box ref={examContainerRef} sx={{ maxWidth: '100%', p: { xs: 1, md: 2 } }}>
             {/* Stepper (hide when done) */}
             {step < 4 && (
                 <Paper variant="outlined" sx={{ p: 2, mb: 3, borderRadius: 2 }}>
@@ -268,6 +333,39 @@ export default function ExamSession() {
                     </Paper>
                 </Box>
             )}
+
+            {/* Fullscreen violation counter badge (visible during exam) */}
+            {step >= 1 && step <= 3 && fsViolations > 0 && (
+                <Box sx={{
+                    position: 'fixed', bottom: 16, right: 16, zIndex: 9999,
+                    bgcolor: 'error.main', color: 'white',
+                    px: 2, py: 1, borderRadius: 2, fontSize: 13, fontWeight: 700,
+                    boxShadow: 4,
+                }}>
+                    ⚠ Fullscreen exits: {fsViolations}
+                </Box>
+            )}
+
+            {/* Fullscreen exit warning dialog */}
+            <Dialog open={fsWarning} disableEscapeKeyDown maxWidth="xs" fullWidth>
+                <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'error.main' }}>
+                    <Warning color="error" /> Fullscreen Required
+                </DialogTitle>
+                <DialogContent>
+                    <Typography gutterBottom>
+                        You exited fullscreen mode. This exam must be taken in fullscreen.
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                        Fullscreen exits are recorded. Violation #{fsViolations} logged.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button variant="contained" color="error" startIcon={<Fullscreen />}
+                        onClick={reEnterFullscreen}>
+                        Return to Fullscreen
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Box>
     );
 }
