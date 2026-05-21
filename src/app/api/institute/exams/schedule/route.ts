@@ -145,6 +145,23 @@ export async function POST(req: NextRequest) {
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const admin = getAdmin();
+
+        // ── Fee validation (backend guard — cannot be bypassed via direct API) ──
+        const { data: feeRows } = await admin
+            .from('student_enrollments')
+            .select('student_id, exam_fee_status')
+            .eq('course_id', courseId)
+            .in('student_id', studentIds);
+
+        const feeStatusMap: Record<string, string> = {};
+        (feeRows ?? []).forEach((r: any) => { feeStatusMap[r.student_id] = r.exam_fee_status; });
+
+        const feePendingIds = studentIds.filter((id: string) => feeStatusMap[id] !== 'paid');
+        if (feePendingIds.length > 0) {
+            return NextResponse.json({
+                error: `Exam cannot be scheduled: ${feePendingIds.length} student(s) have pending exam fees. Complete fee payment before scheduling.`
+            }, { status: 400 });
+        }
         const { data: instAdminData, error: instErr } = await admin
             .from('institute_admins')
             .select(`
@@ -186,7 +203,11 @@ export async function POST(req: NextRequest) {
             .eq('is_active', true)
             .single();
 
-        const pattern = { ...FIXED_PATTERN, ...(patternData ?? {}) } as any;
+        // Filter out null/undefined from patternData so FIXED_PATTERN defaults aren't overridden by DB nulls
+        const safePatternData = patternData
+            ? Object.fromEntries(Object.entries(patternData).filter(([_, v]) => v != null))
+            : {};
+        const pattern = { ...FIXED_PATTERN, ...safePatternData } as any;
         const totalDuration = pattern.duration_minutes as number;
 
         // 4. Operational hours (stored as HH:mm:ss strings in IST)

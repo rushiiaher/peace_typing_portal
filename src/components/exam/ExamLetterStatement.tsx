@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { Box, Typography, Button, Paper, Stack, Grid, Tab, Tabs, Chip, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
-import { Timer, Description, TableChart, CheckCircle } from '@mui/icons-material';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Box, Typography, Button, Paper, Stack, Grid, Tab, Tabs, Chip, Dialog, DialogTitle, DialogContent, DialogActions, ToggleButton, ToggleButtonGroup, Divider } from '@mui/material';
+import { Timer, Description, TableChart, CheckCircle, FormatBold, FormatItalic, FormatUnderlined, FormatAlignLeft, FormatAlignCenter } from '@mui/icons-material';
 
 // ─── Letter Renderer ────────────────────────────────────────────────────────
 
@@ -183,25 +183,102 @@ function StatementInputGrid({ refContent, isMarathi }: { refContent: string; isM
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+function LetterEditor({ isMarathi }: { isMarathi: boolean }) {
+    const editorRef = useRef<HTMLDivElement>(null);
+    const [charCount, setCharCount] = useState(0);
+
+    const execCmd = useCallback((cmd: string, val?: string) => {
+        editorRef.current?.focus();
+        document.execCommand(cmd, false, val);
+    }, []);
+
+    const updateCount = () => {
+        setCharCount(editorRef.current?.innerText?.length ?? 0);
+    };
+
+    return (
+        <Box>
+            {/* Formatting toolbar */}
+            <Stack direction="row" spacing={1} alignItems="center" sx={{
+                mb: 1, p: 0.5, border: '1px solid', borderColor: 'divider',
+                borderRadius: 1, bgcolor: 'grey.50', flexWrap: 'wrap',
+            }}>
+                <ToggleButtonGroup size="small">
+                    <ToggleButton value="bold" title="Bold (Ctrl+B)" onMouseDown={e => { e.preventDefault(); execCmd('bold'); }}>
+                        <FormatBold fontSize="small" />
+                    </ToggleButton>
+                    <ToggleButton value="italic" title="Italic (Ctrl+I)" onMouseDown={e => { e.preventDefault(); execCmd('italic'); }}>
+                        <FormatItalic fontSize="small" />
+                    </ToggleButton>
+                    <ToggleButton value="underline" title="Underline (Ctrl+U)" onMouseDown={e => { e.preventDefault(); execCmd('underline'); }}>
+                        <FormatUnderlined fontSize="small" />
+                    </ToggleButton>
+                </ToggleButtonGroup>
+                <Divider orientation="vertical" flexItem />
+                <ToggleButtonGroup size="small">
+                    <ToggleButton value="left" title="Align Left" onMouseDown={e => { e.preventDefault(); execCmd('justifyLeft'); }}>
+                        <FormatAlignLeft fontSize="small" />
+                    </ToggleButton>
+                    <ToggleButton value="center" title="Center Align" onMouseDown={e => { e.preventDefault(); execCmd('justifyCenter'); }}>
+                        <FormatAlignCenter fontSize="small" />
+                    </ToggleButton>
+                </ToggleButtonGroup>
+                <Box sx={{ ml: 'auto', pr: 1 }}>
+                    <Chip label={`${charCount} chars`} size="small" variant="outlined" />
+                </Box>
+            </Stack>
+
+            {/* Rich-text editor area */}
+            <Box
+                ref={editorRef}
+                contentEditable
+                suppressContentEditableWarning
+                onInput={updateCount}
+                data-placeholder="Type the letter exactly as shown in the reference..."
+                sx={{
+                    minHeight: 500,
+                    p: 2,
+                    border: '2px solid',
+                    borderColor: 'primary.main',
+                    borderRadius: 1,
+                    outline: 'none',
+                    fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : '"Segoe UI", system-ui, sans-serif',
+                    fontSize: isMarathi ? 20 : 14,
+                    lineHeight: 2,
+                    color: '#1e293b',
+                    overflowY: 'auto',
+                    '&:empty::before': {
+                        content: 'attr(data-placeholder)',
+                        color: '#94a3b8',
+                        pointerEvents: 'none',
+                    },
+                }}
+            />
+        </Box>
+    );
+}
+
 export default function ExamLetterStatement({ letter, statement, duration, onComplete }: any) {
     const [timeLeft, setTimeLeft] = useState(duration * 60);
     const [activeTab, setActiveTab] = useState<'letter' | 'statement'>('letter');
-    const [letterTyped, setLetterTyped] = useState('');
     const [confirmOpen, setConfirmOpen] = useState(false);
 
     const isMarathi = letter?.courses?.language_name?.toLowerCase().includes('marathi') ||
         letter?.title?.toLowerCase().includes('marathi') ||
         statement?.title?.toLowerCase().includes('marathi');
 
+    const onCompleteRef = useRef(onComplete);
+    useEffect(() => { onCompleteRef.current = onComplete; }, [onComplete]);
+
     useEffect(() => {
         const t = setInterval(() => {
             setTimeLeft(prev => {
-                if (prev <= 1) { clearInterval(t); onComplete(); return 0; }
+                if (prev <= 1) { clearInterval(t); onCompleteRef.current(); return 0; }
                 return prev - 1;
             });
         }, 1000);
         return () => clearInterval(t);
-    }, [onComplete]);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     const pad2 = (n: number) => String(n).padStart(2, '0');
     const formatTime = (s: number) => `${pad2(Math.floor(s / 60))}:${pad2(s % 60)}`;
@@ -262,43 +339,8 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
 
                         {/* Editor */}
                         <Grid item xs={12} lg={6}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                                <Typography variant="overline" color="primary" fontWeight={700}>✏️ Your Editor</Typography>
-                                <Chip label={`${letterTyped.length} chars`} size="small" variant="outlined" />
-                            </Box>
-                            <textarea
-                                value={letterTyped}
-                                onChange={e => setLetterTyped(e.target.value)}
-                                onKeyDown={e => {
-                                    if (e.key === 'Tab') {
-                                        e.preventDefault();
-                                        const el = e.currentTarget;
-                                        const start = el.selectionStart;
-                                        const end = el.selectionEnd;
-                                        const tab = '\t';
-                                        const newVal = letterTyped.substring(0, start) + tab + letterTyped.substring(end);
-                                        setLetterTyped(newVal);
-                                        // Restore cursor after the inserted tab
-                                        requestAnimationFrame(() => {
-                                            el.selectionStart = el.selectionEnd = start + tab.length;
-                                        });
-                                    }
-                                }}
-                                placeholder="Type the letter exactly as shown in the reference..."
-                                style={{
-                                    width: '100%',
-                                    minHeight: 500,
-                                    padding: '16px',
-                                    border: '2px solid #3b82f6',
-                                    borderRadius: 8,
-                                    fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : '"Segoe UI", system-ui, sans-serif',
-                                    fontSize: isMarathi ? 20 : 14,
-                                    lineHeight: 2,
-                                    resize: 'vertical',
-                                    outline: 'none',
-                                    color: '#1e293b',
-                                }}
-                            />
+                            <Typography variant="overline" color="primary" fontWeight={700} sx={{ display: 'block', mb: 1 }}>✏️ Your Editor</Typography>
+                            <LetterEditor isMarathi={isMarathi} />
                         </Grid>
                     </Grid>
                 </Paper>
@@ -340,7 +382,7 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
                 <DialogContent>
                     <Typography>You are about to submit Letter & Statement. This cannot be undone.</Typography>
                     <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-                        <Typography variant="body2">• Letter: {letterTyped.length} characters typed</Typography>
+                        <Typography variant="body2">• Letter: typed (check editor)</Typography>
                         <Typography variant="body2">• Statement: Table filled</Typography>
                     </Box>
                 </DialogContent>

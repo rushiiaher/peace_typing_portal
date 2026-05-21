@@ -60,7 +60,7 @@ export async function GET() {
         // Fetch raw exams — no embedded joins to avoid PostgREST FK ambiguity
         const { data: rawExams, error: examErr } = await admin
             .from('exams')
-            .select('id, student_id, course_id, system_id, batch_id, exam_date, start_time, end_time, reporting_time, status, result, attendance_status, exam_center_code')
+            .select('id, student_id, course_id, system_id, batch_id, exam_date, start_time, end_time, reporting_time, status, result, total_marks_obtained, attendance_status, exam_center_code')
             .in('batch_id', ctx.batchIds)
             .order('start_time', { ascending: false, nullsFirst: false });
         if (examErr) throw examErr;
@@ -107,6 +107,8 @@ export async function GET() {
             start_time: e.start_time,
             reporting_time: e.reporting_time ?? null,
             status: e.status,
+            result: e.result ?? null,
+            wpm: e.total_marks_obtained ?? null,
             attendance: e.attendance_status,
             system_name: sysMap[e.system_id]?.system_name ?? '—',
             center_code: e.exam_center_code ?? '—',

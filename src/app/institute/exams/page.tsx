@@ -30,6 +30,7 @@ interface ExamRow {
   id: string; student_name: string; enrollment: string;
   course_name: string; batch_id: string; batch_name: string;
   exam_date: string; start_time: string; reporting_time: string; status: string;
+  result: string | null; wpm: number | null;
   attendance: string; system_name: string; center_code: string;
 }
 interface Batch { id: string; batch_name: string; batch_code: string; course_id: string; course_name?: string; }
@@ -303,6 +304,18 @@ export default function ExamsPage() {
       renderCell: p => <Chip label={p.value?.replace('_', ' ').toUpperCase()} color={statusColor(p.value)} size="small" />
     },
     {
+      field: 'result', headerName: 'Result', width: 130,
+      renderCell: p => {
+        if (!p.row.result) return <Typography variant="caption" color="text.secondary">—</Typography>;
+        return (
+          <Stack>
+            <Chip label={p.row.result.toUpperCase()} size="small" color={p.row.result === 'pass' ? 'success' : 'error'} />
+            {p.row.wpm != null && <Typography variant="caption" color="text.secondary">{p.row.wpm} WPM</Typography>}
+          </Stack>
+        );
+      }
+    },
+    {
       field: 'attendance', headerName: 'Attendance', width: 150,
       renderCell: p => {
         // Show attendance buttons only once current time >= reporting_time
@@ -438,6 +451,7 @@ export default function ExamsPage() {
                             <TableCell sx={{ fontWeight: 700 }}>Student</TableCell>
                             <TableCell sx={{ fontWeight: 700 }}>System</TableCell>
                             <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>Result</TableCell>
                             <TableCell sx={{ fontWeight: 700 }}>Attendance</TableCell>
                             <TableCell sx={{ fontWeight: 700 }}>Admit Card</TableCell>
                             <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>
@@ -461,6 +475,14 @@ export default function ExamsPage() {
                               </TableCell>
                               <TableCell>
                                 <Chip size="small" label={e.status?.replace('_', ' ').toUpperCase()} color={statusColor(e.status)} />
+                              </TableCell>
+                              <TableCell>
+                                {e.result ? (
+                                  <Stack spacing={0.3}>
+                                    <Chip size="small" label={e.result.toUpperCase()} color={e.result === 'pass' ? 'success' : 'error'} />
+                                    {e.wpm != null && <Typography variant="caption" color="text.secondary">{e.wpm} WPM</Typography>}
+                                  </Stack>
+                                ) : <Typography variant="caption" color="text.secondary">—</Typography>}
                               </TableCell>
                               <TableCell>
                                 {(() => {

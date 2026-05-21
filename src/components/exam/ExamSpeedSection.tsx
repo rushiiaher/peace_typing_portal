@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Box, Typography, Button, Paper, Stack, Chip } from '@mui/material';
+import { Box, Typography, Button, Paper, Stack, Chip, Grid } from '@mui/material';
 import { Timer, Speed, CheckCircle } from '@mui/icons-material';
 
 export default function ExamSpeedSection({ passage, courseWpm, onComplete }: any) {
@@ -153,84 +153,93 @@ export default function ExamSpeedSection({ passage, courseWpm, onComplete }: any
                 <Typography variant="body2" color="text.secondary"><strong>Allotted Time:</strong> {formatTime(initialDuration)}</Typography>
             </Paper>
 
-            {/* ── Reference Text ── */}
-            <Paper elevation={1} sx={{ p: 4, borderRadius: 2 }}>
-                <Typography variant="overline" color="text.secondary" fontWeight={700} sx={{ mb: 2, display: 'block' }}>
-                    📄 Reference Passage (Read & Type Below)
-                </Typography>
-                <Box
-                    sx={{
-                        p: 3, bgcolor: '#f8fafc', borderRadius: 2,
-                        border: '1px solid', borderColor: 'divider',
-                        minHeight: 160, lineHeight: 2.2, fontSize: isMarathi ? '22px' : '16px',
-                        fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : 'inherit',
-                        userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none',
-                        pointerEvents: 'none',
-                        letterSpacing: isMarathi ? '0.03em' : 'normal',
-                    }}
-                    onCopy={(e) => e.preventDefault()}
-                    onCut={(e) => e.preventDefault()}
-                    onContextMenu={(e) => e.preventDefault()}
-                    onDragStart={(e) => e.preventDefault()}
-                >
-                    {overlaySpans}
-                </Box>
-            </Paper>
-
-            {/* ── Typing Area ── */}
-            <Paper elevation={1} sx={{ p: 4, borderRadius: 2 }}>
-                <Typography variant="overline" color="primary" fontWeight={700} sx={{ mb: 2, display: 'block' }}>
-                    ⌨️ Your Input
-                </Typography>
-                <textarea
-                    ref={textareaRef}
-                    disabled={status === 'finished'}
-                    autoFocus
-                    placeholder={status === 'idle' ? 'Click here and start typing to begin the timer…' : ''}
-                    value={typedText}
-                    onChange={handleTyping}
-                    onPaste={(e) => e.preventDefault()}
-                    onCopy={(e) => e.preventDefault()}
-                    onCut={(e) => e.preventDefault()}
-                    onContextMenu={(e) => e.preventDefault()}
-                    style={{
-                        width: '100%',
-                        minHeight: 180,
-                        padding: '16px',
-                        border: '2px solid',
-                        borderColor: status === 'active' ? '#3b82f6' : status === 'finished' ? '#10b981' : '#e2e8f0',
-                        borderRadius: 8,
-                        fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : '"Segoe UI", system-ui, sans-serif',
-                        fontSize: isMarathi ? '22px' : '15px',
-                        lineHeight: 1.9,
-                        resize: 'vertical',
-                        outline: 'none',
-                        color: '#1e293b',
-                        background: status === 'finished' ? '#f0fdf4' : '#ffffff',
-                        transition: 'border-color 0.2s',
-                    }}
-                />
-
-                {/* Progress bar */}
-                {passageText.length > 0 && (
-                    <Box sx={{ mt: 2 }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                            <Typography variant="caption" color="text.secondary">Progress</Typography>
-                            <Typography variant="caption" color="text.secondary">
-                                {typedText.length} / {passageText.length} characters
-                            </Typography>
+            {/* ── Side-by-side: Reference + Typing ── */}
+            <Grid container spacing={2}>
+                {/* Left: Reference passage */}
+                <Grid item xs={12} lg={6}>
+                    <Paper elevation={1} sx={{ p: 3, borderRadius: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
+                        <Typography variant="overline" color="text.secondary" fontWeight={700} sx={{ mb: 1.5, display: 'block' }}>
+                            📄 Reference Passage
+                        </Typography>
+                        <Box
+                            sx={{
+                                p: 2.5, bgcolor: '#f8fafc', borderRadius: 2, flex: 1,
+                                border: '1px solid', borderColor: 'divider',
+                                height: 480, overflowY: 'auto',
+                                lineHeight: 2.2, fontSize: isMarathi ? '20px' : '15px',
+                                fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : 'inherit',
+                                userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none',
+                                pointerEvents: 'none',
+                                letterSpacing: isMarathi ? '0.03em' : 'normal',
+                            }}
+                            onCopy={(e) => e.preventDefault()}
+                            onCut={(e) => e.preventDefault()}
+                            onContextMenu={(e) => e.preventDefault()}
+                            onDragStart={(e) => e.preventDefault()}
+                        >
+                            {overlaySpans}
                         </Box>
-                        <Box sx={{ height: 6, bgcolor: 'grey.200', borderRadius: 3, overflow: 'hidden' }}>
-                            <Box sx={{
-                                height: '100%', borderRadius: 3,
-                                width: `${Math.min(100, (typedText.length / passageText.length) * 100)}%`,
-                                bgcolor: status === 'finished' ? 'success.main' : 'primary.main',
-                                transition: 'width 0.1s',
-                            }} />
-                        </Box>
-                    </Box>
-                )}
-            </Paper>
+                    </Paper>
+                </Grid>
+
+                {/* Right: Typing area */}
+                <Grid item xs={12} lg={6}>
+                    <Paper elevation={1} sx={{ p: 3, borderRadius: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
+                        <Typography variant="overline" color="primary" fontWeight={700} sx={{ mb: 1.5, display: 'block' }}>
+                            ⌨️ Your Input
+                        </Typography>
+                        <textarea
+                            ref={textareaRef}
+                            disabled={status === 'finished'}
+                            autoFocus
+                            placeholder={status === 'idle' ? 'Click here and start typing to begin the timer…' : ''}
+                            value={typedText}
+                            onChange={handleTyping}
+                            onPaste={(e) => e.preventDefault()}
+                            onCopy={(e) => e.preventDefault()}
+                            onCut={(e) => e.preventDefault()}
+                            onContextMenu={(e) => e.preventDefault()}
+                            style={{
+                                flex: 1,
+                                width: '100%',
+                                height: 440,
+                                padding: '16px',
+                                border: '2px solid',
+                                borderColor: status === 'active' ? '#3b82f6' : status === 'finished' ? '#10b981' : '#e2e8f0',
+                                borderRadius: 8,
+                                fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : '"Segoe UI", system-ui, sans-serif',
+                                fontSize: isMarathi ? '20px' : '15px',
+                                lineHeight: 2.2,
+                                resize: 'none',
+                                outline: 'none',
+                                color: '#1e293b',
+                                background: status === 'finished' ? '#f0fdf4' : '#ffffff',
+                                transition: 'border-color 0.2s',
+                            }}
+                        />
+
+                        {/* Progress bar */}
+                        {passageText.length > 0 && (
+                            <Box sx={{ mt: 1.5 }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                                    <Typography variant="caption" color="text.secondary">Progress</Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                        {typedText.length} / {passageText.length} chars
+                                    </Typography>
+                                </Box>
+                                <Box sx={{ height: 5, bgcolor: 'grey.200', borderRadius: 3, overflow: 'hidden' }}>
+                                    <Box sx={{
+                                        height: '100%', borderRadius: 3,
+                                        width: `${Math.min(100, (typedText.length / passageText.length) * 100)}%`,
+                                        bgcolor: status === 'finished' ? 'success.main' : 'primary.main',
+                                        transition: 'width 0.1s',
+                                    }} />
+                                </Box>
+                            </Box>
+                        )}
+                    </Paper>
+                </Grid>
+            </Grid>
 
             {/* ── Finished Summary ── */}
             {status === 'finished' && (() => {

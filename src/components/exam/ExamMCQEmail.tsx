@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
     Box, Typography, Button, Paper, Radio, RadioGroup,
     FormControlLabel, FormControl, Stack, Grid, IconButton,
@@ -21,20 +21,25 @@ export default function ExamMCQEmail({ mcqs, email, duration, onComplete }: any)
     const [answers, setAnswers] = useState<Record<string, string>>({});
     const [emailValues, setEmailValues] = useState<EmailParts>({});
     const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+    const [showMcqComplete, setShowMcqComplete] = useState(false);
+    const mcqCompleteShown = useRef(false);
 
-    // Timer
+    const onCompleteRef = useRef(onComplete);
+    useEffect(() => { onCompleteRef.current = onComplete; }, [onComplete]);
+
+    // Timer — stable interval, reads latest onComplete via ref
     useEffect(() => {
         const timer = setInterval(() => {
             setTimeLeft((prev: number) => {
                 if (prev <= 1) {
-                    onComplete(); // Auto submit
+                    onCompleteRef.current();
                     return 0;
                 }
                 return prev - 1;
             });
         }, 1000);
         return () => clearInterval(timer);
-    }, [onComplete]);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     const formatTime = (seconds: number) => {
         const m = Math.floor(seconds / 60);
@@ -44,9 +49,17 @@ export default function ExamMCQEmail({ mcqs, email, duration, onComplete }: any)
 
     const parsedEmailParts: EmailParts = email?.template_content ? JSON.parse(email.template_content) : {};
 
-    const handleAnswerChange = (qId: string, val: string) => {
+    const handleAnswerChange = useCallback((qId: string, val: string) => {
         setAnswers(prev => ({ ...prev, [qId]: val }));
-    };
+    }, []);
+
+    // Fire MCQ-complete nudge exactly once when all questions answered
+    useEffect(() => {
+        if (mcqs && Object.keys(answers).length === mcqs.length && !mcqCompleteShown.current) {
+            mcqCompleteShown.current = true;
+            setShowMcqComplete(true);
+        }
+    }, [answers, mcqs]);
 
     const handleEmailChange = (field: keyof EmailParts, val: string) => {
         setEmailValues(prev => ({ ...prev, [field]: val }));
@@ -165,6 +178,13 @@ export default function ExamMCQEmail({ mcqs, email, duration, onComplete }: any)
                             </Paper>
                         </Grid>
                     </Grid>
+                ) : !email ? (
+                    <Paper className="p-6">
+                        <Box sx={{ textAlign: 'center', py: 6, color: 'text.secondary' }}>
+                            <Typography variant="h6" gutterBottom>No Email Template Assigned</Typography>
+                            <Typography variant="body2">Email writing content was not assigned for this exam. Contact your institute.</Typography>
+                        </Box>
+                    </Paper>
                 ) : (
                     <Paper className="p-6">
                         <Grid container spacing={3}>
@@ -223,6 +243,22 @@ export default function ExamMCQEmail({ mcqs, email, duration, onComplete }: any)
                     </Paper>
                 )}
             </Box>
+
+            {/* MCQ completion nudge */}
+            <Dialog open={showMcqComplete} onClose={() => setShowMcqComplete(false)} maxWidth="xs" fullWidth>
+                <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <CheckCircle color="success" /> All MCQs Completed!
+                </DialogTitle>
+                <DialogContent>
+                    <Typography>All {mcqs?.length} MCQ questions answered. Click <strong>Submit Section 1</strong> to proceed, or review your answers first.</Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setShowMcqComplete(false)}>Review Answers</Button>
+                    <Button variant="contained" color="success" onClick={() => { setShowMcqComplete(false); setShowSubmitConfirm(true); }}>
+                        Submit Section 1
+                    </Button>
+                </DialogActions>
+            </Dialog>
 
             <Dialog open={showSubmitConfirm} onClose={() => setShowSubmitConfirm(false)}>
                 <DialogTitle>Finish Section 1?</DialogTitle>

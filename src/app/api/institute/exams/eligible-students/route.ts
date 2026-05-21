@@ -65,14 +65,17 @@ export async function GET(req: NextRequest) {
         const feeMap: Record<string, string> = {};
         (enrollments ?? []).forEach((e: any) => { feeMap[e.student_id] = e.exam_fee_status; });
 
-        const eligibleStudents = (students ?? []).map(s => ({
-            ...s,
-            has_photo: !!s.photo_url,
-            exam_fee_paid: feeMap[s.id] === 'paid',
-            already_scheduled: alreadyScheduledIds.has(s.id),
-            // For now all active students in the batch are eligible (remove fee check if not collected)
-            is_eligible: !alreadyScheduledIds.has(s.id),
-        }));
+        const eligibleStudents = (students ?? []).map(s => {
+            const feePaid = feeMap[s.id] === 'paid';
+            const alreadyScheduled = alreadyScheduledIds.has(s.id);
+            return {
+                ...s,
+                has_photo: !!s.photo_url,
+                exam_fee_paid: feePaid,
+                already_scheduled: alreadyScheduled,
+                is_eligible: feePaid && !alreadyScheduled,
+            };
+        });
 
         return NextResponse.json({
             students: eligibleStudents,
