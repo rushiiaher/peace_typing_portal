@@ -5,11 +5,11 @@ import { useParams, useRouter } from 'next/navigation';
 import {
     Box, Typography, Paper, Stack, Radio, RadioGroup,
     FormControlLabel, FormControl, Button, CircularProgress,
-    Alert, LinearProgress, Divider,
+    Alert, LinearProgress, Divider, Chip,
 } from '@mui/material';
 import {
     ArrowBack, CheckCircle, ErrorOutline, Replay,
-    SkipNext, ArrowForward, Quiz, Timer,
+    SkipNext, ArrowForward, Quiz, Timer, CheckCircleOutline, Cancel,
 } from '@mui/icons-material';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -33,11 +33,12 @@ export default function MCQSession() {
 
     // Quiz state
     const [currentIndex, setCurrentIndex] = useState(0);
-    const [answers, setAnswers] = useState<Record<number, string>>({}); // index -> selected 'a'|'b'|'c'|'d'
+    const [answers, setAnswers] = useState<Record<number, string>>({});
+    const [submitted, setSubmitted] = useState(false); // feedback shown for current Q
     const [showResults, setShowResults] = useState(false);
     const [score, setScore] = useState({ correct: 0, total: 0, percent: 0 });
 
-    // ─── Fetch ──────────────────────────────────────────────────────────────
+    // ─── Fetch ────────────────────────────────────────────────────────────────
 
     useEffect(() => {
         async function fetchQuestions() {
@@ -55,15 +56,29 @@ export default function MCQSession() {
         fetchQuestions();
     }, [set_id]);
 
+    // ─── Live score (derived, no extra state) ─────────────────────────────────
+
+    const liveCorrect = Object.entries(answers).filter(
+        ([idx, val]) => val === questions[parseInt(idx)]?.correct_answer?.toLowerCase()
+    ).length;
+    const liveIncorrect = Object.keys(answers).length - liveCorrect;
+
     // ─── Handlers ─────────────────────────────────────────────────────────────
 
     const handleAnswerChange = (val: string) => {
+        if (submitted) return; // locked after first click
         setAnswers(prev => ({ ...prev, [currentIndex]: val }));
+        setSubmitted(true); // show feedback immediately
+    };
+
+    const goTo = (idx: number) => {
+        setCurrentIndex(idx);
+        setSubmitted(idx in answers); // restore feedback state for already-answered Qs
     };
 
     const next = () => {
         if (currentIndex < questions.length - 1) {
-            setCurrentIndex(prev => prev + 1);
+            goTo(currentIndex + 1);
         } else {
             finish();
         }
@@ -74,7 +89,6 @@ export default function MCQSession() {
         questions.forEach((q, i) => {
             if (answers[i] === q.correct_answer.toLowerCase()) correct++;
         });
-
         const total = questions.length;
         const percent = Math.round((correct / total) * 100);
         setScore({ correct, total, percent });
@@ -85,10 +99,7 @@ export default function MCQSession() {
             await fetch('/api/student/practice/mcq', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    set_id, total_questions: total,
-                    correct_answers: correct, score_percent: percent,
-                }),
+                body: JSON.stringify({ set_id, total_questions: total, correct_answers: correct, score_percent: percent }),
             });
         } catch { }
         finally { setSaving(false); }
@@ -97,6 +108,7 @@ export default function MCQSession() {
     const reset = () => {
         setCurrentIndex(0);
         setAnswers({});
+        setSubmitted(false);
         setShowResults(false);
     };
 
@@ -106,21 +118,53 @@ export default function MCQSession() {
 
     const q = questions[currentIndex];
     const selected = answers[currentIndex] || '';
+    const correctAns = q.correct_answer.toLowerCase();
+    const isCorrect = submitted && selected === correctAns;
+
+    const getOptionText = (key: string) => {
+        if (key === 'a') return q.option_a;
+        if (key === 'b') return q.option_b;
+        if (key === 'c') return q.option_c;
+        if (key === 'd') return q.option_d;
+        return '';
+    };
+
+    // Per-option styling when feedback is shown
+    const optionStyle = (val: string) => {
+        if (!submitted) {
+            return {
+                borderColor: selected === val ? 'primary.main' : '#e2e8f0',
+                bgcolor: selected === val ? 'primary.50' : 'white',
+            };
+        }
+        if (val === correctAns) return { borderColor: 'success.main', bgcolor: 'success.50' };
+        if (val === selected)   return { borderColor: 'error.main',   bgcolor: 'error.50'   };
+        return { borderColor: '#e2e8f0', bgcolor: 'white' };
+    };
+
+    const badgeColor = (val: string) => {
+        if (!submitted) return selected === val ? 'primary.main' : '#f1f5f9';
+        if (val === correctAns) return 'success.main';
+        if (val === selected)   return 'error.main';
+        return '#f1f5f9';
+    };
+
+    const badgeTextColor = (val: string) => {
+        if (!submitted && selected !== val) return '#64748b';
+        if (!submitted) return 'white';
+        if (val === correctAns || val === selected) return 'white';
+        return '#64748b';
+    };
+
+    // ─── Results Screen ───────────────────────────────────────────────────────
 
     if (showResults) {
         const passed = score.percent >= 80;
         return (
-            <Box sx={{
-                position: 'fixed', inset: 0, zIndex: 1400,
-                bgcolor: '#f8fafc', overflow: 'auto', py: 8, px: 3
-            }}>
+            <Box sx={{ position: 'fixed', inset: 0, zIndex: 1400, bgcolor: '#f8fafc', overflow: 'auto', py: 8, px: 3 }}>
                 <Box sx={{ maxWidth: 800, mx: 'auto' }}>
-                    {/* ── Result Summary Card ── */}
                     <Paper elevation={0} sx={{ p: 6, borderRadius: 5, border: '1px solid #e2e8f0', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.05)', mb: 5, textAlign: 'center' }}>
-                        <Box sx={{
-                            width: 100, height: 100, borderRadius: '50%', bgcolor: passed ? 'success.50' : 'warning.50',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 3
-                        }}>
+                        <Box sx={{ width: 100, height: 100, borderRadius: '50%', bgcolor: passed ? 'success.50' : 'warning.50', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 3 }}>
                             {passed ? <CheckCircle sx={{ fontSize: 60, color: 'success.main' }} /> : <ErrorOutline sx={{ fontSize: 60, color: 'warning.main' }} />}
                         </Box>
 
@@ -131,107 +175,71 @@ export default function MCQSession() {
                             {passed ? "You've successfully mastered this module." : "Great effort! Keep practicing to improve your score."}
                         </Typography>
 
-                        <Box sx={{
-                            display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, mb: 4, p: 3,
-                            bgcolor: '#f1f5f9', borderRadius: 4
-                        }}>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2, mb: 4, p: 3, bgcolor: '#f1f5f9', borderRadius: 4 }}>
                             <Box sx={{ textAlign: 'center' }}>
-                                <Typography variant="h3" fontWeight={900} color={passed ? 'success.main' : 'primary.main'}>
-                                    {score.percent}%
-                                </Typography>
-                                <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>
-                                    Total Accuracy
-                                </Typography>
+                                <Typography variant="h3" fontWeight={900} color={passed ? 'success.main' : 'primary.main'}>{score.percent}%</Typography>
+                                <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>Score</Typography>
                             </Box>
-                            <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 1 }}>
-                                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                    <Typography variant="body2" fontWeight={600} color="text.secondary">Correct Answers</Typography>
-                                    <Typography variant="body2" fontWeight={800} color="success.main">{score.correct}</Typography>
-                                </Stack>
-                                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                    <Typography variant="body2" fontWeight={600} color="text.secondary">Total Questions</Typography>
-                                    <Typography variant="body2" fontWeight={800}>{score.total}</Typography>
-                                </Stack>
+                            <Box sx={{ textAlign: 'center' }}>
+                                <Typography variant="h3" fontWeight={900} color="success.main">{score.correct}</Typography>
+                                <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>Correct</Typography>
+                            </Box>
+                            <Box sx={{ textAlign: 'center' }}>
+                                <Typography variant="h3" fontWeight={900} color="error.main">{score.total - score.correct}</Typography>
+                                <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>Wrong</Typography>
                             </Box>
                         </Box>
 
                         <Stack direction="row" spacing={2.5} justifyContent="center">
-                            <Button
-                                variant="outlined"
-                                size="large"
-                                startIcon={<ArrowBack />}
+                            <Button variant="outlined" size="large" startIcon={<ArrowBack />}
                                 onClick={() => router.push('/student/practice/mcq')}
-                                sx={{ borderRadius: 3, px: 4, py: 1.5, fontWeight: 700, textTransform: 'none', borderWidth: 2, '&:hover': { borderWidth: 2 } }}
-                            >
+                                sx={{ borderRadius: 3, px: 4, py: 1.5, fontWeight: 700, textTransform: 'none', borderWidth: 2, '&:hover': { borderWidth: 2 } }}>
                                 Back to List
                             </Button>
-                            <Button
-                                variant="contained"
-                                size="large"
-                                startIcon={<Replay />}
-                                onClick={reset}
-                                sx={{ borderRadius: 3, px: 4, py: 1.5, fontWeight: 800, textTransform: 'none', boxShadow: 'none' }}
-                            >
+                            <Button variant="contained" size="large" startIcon={<Replay />} onClick={reset}
+                                sx={{ borderRadius: 3, px: 4, py: 1.5, fontWeight: 800, textTransform: 'none', boxShadow: 'none' }}>
                                 Try Again
                             </Button>
                         </Stack>
                     </Paper>
 
-                    {/* ── Answer Key / Analysis Section ── */}
-                    <Typography variant="h5" fontWeight={900} sx={{ mb: 3, color: '#1e293b' }}>
-                        Answer Key & Analysis
-                    </Typography>
-
+                    {/* Answer key */}
+                    <Typography variant="h5" fontWeight={900} sx={{ mb: 3, color: '#1e293b' }}>Answer Key & Analysis</Typography>
                     <Stack spacing={3}>
                         {questions.map((q, idx) => {
                             const userAns = answers[idx];
-                            const correctAns = q.correct_answer.toLowerCase();
-                            const isCorrect = userAns === correctAns;
-
-                            const getOptionText = (key: string) => {
-                                if (key === 'a') return q.option_a;
-                                if (key === 'b') return q.option_b;
-                                if (key === 'c') return q.option_c;
-                                if (key === 'd') return q.option_d;
-                                return 'N/A';
+                            const cAns = q.correct_answer.toLowerCase();
+                            const ok = userAns === cAns;
+                            const optText = (k: string) => {
+                                if (k === 'a') return q.option_a; if (k === 'b') return q.option_b;
+                                if (k === 'c') return q.option_c; if (k === 'd') return q.option_d; return 'N/A';
                             };
-
                             return (
                                 <Paper key={idx} variant="outlined" sx={{ p: 4, borderRadius: 4, position: 'relative', overflow: 'hidden' }}>
-                                    <Box sx={{ position: 'absolute', top: 0, left: 0, width: 6, height: '100%', bgcolor: isCorrect ? 'success.main' : 'error.main' }} />
-
+                                    <Box sx={{ position: 'absolute', top: 0, left: 0, width: 6, height: '100%', bgcolor: ok ? 'success.main' : 'error.main' }} />
                                     <Stack spacing={2.5}>
                                         <Typography variant="subtitle1" fontWeight={800} sx={{ color: '#1e293b', fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : 'inherit', fontSize: isMarathi ? 24 : 16 }}>
                                             {idx + 1}. {q.question}
                                         </Typography>
-
                                         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
-                                            <Paper sx={{ p: 2, bgcolor: isCorrect ? 'success.50' : 'error.50', borderRadius: 2, border: '1px solid', borderColor: isCorrect ? 'success.100' : 'error.100' }}>
-                                                <Typography variant="caption" fontWeight={800} color={isCorrect ? 'success.dark' : 'error.dark'} sx={{ display: 'block', mb: 0.5 }}>
-                                                    YOUR ANSWER
-                                                </Typography>
+                                            <Paper sx={{ p: 2, bgcolor: ok ? 'success.50' : 'error.50', borderRadius: 2, border: '1px solid', borderColor: ok ? 'success.100' : 'error.100' }}>
+                                                <Typography variant="caption" fontWeight={800} color={ok ? 'success.dark' : 'error.dark'} sx={{ display: 'block', mb: 0.5 }}>YOUR ANSWER</Typography>
                                                 <Typography variant="body2" fontWeight={700} sx={{ fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : 'inherit', fontSize: isMarathi ? 20 : 14 }}>
-                                                    ({userAns?.toUpperCase() || '—'}) {getOptionText(userAns)}
+                                                    ({userAns?.toUpperCase() || '—'}) {optText(userAns)}
                                                 </Typography>
                                             </Paper>
-
                                             <Paper sx={{ p: 2, bgcolor: 'success.50', borderRadius: 2, border: '1px solid', borderColor: 'success.100' }}>
-                                                <Typography variant="caption" fontWeight={800} color="success.dark" sx={{ display: 'block', mb: 0.5 }}>
-                                                    CORRECT ANSWER
-                                                </Typography>
+                                                <Typography variant="caption" fontWeight={800} color="success.dark" sx={{ display: 'block', mb: 0.5 }}>CORRECT ANSWER</Typography>
                                                 <Typography variant="body2" fontWeight={700} sx={{ fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : 'inherit', fontSize: isMarathi ? 20 : 14 }}>
-                                                    ({correctAns.toUpperCase()}) {getOptionText(correctAns)}
+                                                    ({cAns.toUpperCase()}) {optText(cAns)}
                                                 </Typography>
                                             </Paper>
                                         </Box>
-
                                         {q.explanation && (
                                             <Box sx={{ p: 2.5, bgcolor: '#f8fafc', borderRadius: 2.5, borderLeft: '4px solid #3b82f6' }}>
                                                 <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
                                                     <Quiz sx={{ fontSize: 18, color: '#3b82f6' }} />
-                                                    <Typography variant="caption" fontWeight={900} color="primary.main" sx={{ letterSpacing: 0.5 }}>
-                                                        EXPLANATION
-                                                    </Typography>
+                                                    <Typography variant="caption" fontWeight={900} color="primary.main" sx={{ letterSpacing: 0.5 }}>EXPLANATION</Typography>
                                                 </Stack>
                                                 <Typography variant="body2" sx={{ color: '#475569', lineHeight: 1.6, fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : 'inherit', fontSize: isMarathi ? 18 : 14 }}>
                                                     {q.explanation}
@@ -245,11 +253,7 @@ export default function MCQSession() {
                     </Stack>
 
                     <Box sx={{ py: 6, textAlign: 'center' }}>
-                        <Button
-                            variant="text"
-                            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-                            sx={{ fontWeight: 700, color: 'text.secondary' }}
-                        >
+                        <Button variant="text" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} sx={{ fontWeight: 700, color: 'text.secondary' }}>
                             Back to Top
                         </Button>
                     </Box>
@@ -258,59 +262,44 @@ export default function MCQSession() {
         );
     }
 
+    // ─── Practice Question Screen ─────────────────────────────────────────────
+
     return (
-        <Box sx={{
-            position: 'fixed', inset: 0, zIndex: 1400,
-            bgcolor: '#f1f5f9', overflow: 'auto'
-        }}>
+        <Box sx={{ position: 'fixed', inset: 0, zIndex: 1400, bgcolor: '#f1f5f9', overflow: 'auto' }}>
             <Box sx={{ maxWidth: 850, mx: 'auto', px: 3, py: 6 }}>
+
                 {/* ── Top Bar ── */}
                 <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 4 }}>
-                    <Button
-                        variant="text"
-                        startIcon={<ArrowBack />}
+                    <Button variant="text" startIcon={<ArrowBack />}
                         onClick={() => router.push('/student/practice/mcq')}
-                        sx={{
-                            color: '#475569', bgcolor: 'white', fontWeight: 700, px: 2, borderRadius: 2,
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.05)', '&:hover': { bgcolor: '#f8fafc' }
-                        }}
-                    >
+                        sx={{ color: '#475569', bgcolor: 'white', fontWeight: 700, px: 2, borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.05)', '&:hover': { bgcolor: '#f8fafc' } }}>
                         Quit Quiz
                     </Button>
 
-                    <Stack direction="row" alignItems="center" spacing={3}>
+                    <Stack direction="row" alignItems="center" spacing={2}>
+                        {/* Live score chips */}
+                        {Object.keys(answers).length > 0 && (
+                            <Stack direction="row" spacing={1}>
+                                <Chip icon={<CheckCircleOutline fontSize="small" />} label={liveCorrect} color="success" size="small" sx={{ fontWeight: 800 }} />
+                                <Chip icon={<Cancel fontSize="small" />} label={liveIncorrect} color="error" size="small" sx={{ fontWeight: 800 }} />
+                            </Stack>
+                        )}
+
+                        {/* Progress */}
                         <Box sx={{ textAlign: 'right' }}>
-                            <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: 'uppercase', display: 'block' }}>
-                                Progress
-                            </Typography>
-                            <Typography variant="body2" fontWeight={800} color="primary.main">
-                                {currentIndex + 1} / {questions.length}
-                            </Typography>
+                            <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: 'uppercase', display: 'block' }}>Progress</Typography>
+                            <Typography variant="body2" fontWeight={800} color="primary.main">{currentIndex + 1} / {questions.length}</Typography>
                         </Box>
                         <Box sx={{ position: 'relative', display: 'inline-flex' }}>
-                            <CircularProgress
-                                variant="determinate"
-                                value={((currentIndex + 1) / questions.length) * 100}
-                                size={44}
-                                thickness={5}
-                                sx={{ color: '#e2e8f0' }}
-                            />
-                            <CircularProgress
-                                variant="determinate"
-                                value={((currentIndex + 1) / questions.length) * 100}
-                                size={44}
-                                thickness={5}
-                                sx={{
-                                    color: 'primary.main', position: 'absolute', left: 0,
-                                    strokeLinecap: 'round'
-                                }}
-                            />
+                            <CircularProgress variant="determinate" value={((currentIndex + 1) / questions.length) * 100} size={44} thickness={5} sx={{ color: '#e2e8f0' }} />
+                            <CircularProgress variant="determinate" value={((currentIndex + 1) / questions.length) * 100} size={44} thickness={5}
+                                sx={{ color: 'primary.main', position: 'absolute', left: 0, strokeLinecap: 'round' }} />
                         </Box>
                     </Stack>
                 </Stack>
 
                 {/* ── Question Card ── */}
-                <Paper elevation={0} sx={{ p: { xs: 3, md: 5 }, borderRadius: 5, border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02), 0 10px 15px -3px rgba(0,0,0,0.03)', mb: 4 }}>
+                <Paper elevation={0} sx={{ p: { xs: 3, md: 5 }, borderRadius: 5, border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02), 0 10px 15px -3px rgba(0,0,0,0.03)', mb: 3 }}>
                     <Typography variant="h5" fontWeight={800} sx={{ mb: 5, color: '#1e293b', lineHeight: 1.6, fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : 'inherit', fontSize: isMarathi ? 32 : 24 }}>
                         {q.question}
                     </Typography>
@@ -327,57 +316,78 @@ export default function MCQSession() {
                                     key={opt.val}
                                     onClick={() => handleAnswerChange(opt.val)}
                                     sx={{
-                                        mb: 2, p: 2.5, borderRadius: 3, cursor: 'pointer',
+                                        mb: 2, p: 2.5, borderRadius: 3,
+                                        cursor: submitted ? 'default' : 'pointer',
+                                        pointerEvents: submitted ? 'none' : 'auto',
                                         display: 'flex', alignItems: 'center', gap: 2,
                                         border: '2px solid',
-                                        borderColor: selected === opt.val ? 'primary.main' : '#e2e8f0',
-                                        bgcolor: selected === opt.val ? 'primary.50' : 'white',
-                                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                                        '&:hover': {
-                                            borderColor: selected === opt.val ? 'primary.main' : 'primary.200',
-                                            bgcolor: selected === opt.val ? 'primary.50' : '#f8fafc',
-                                            transform: 'translateX(4px)'
-                                        },
+                                        ...optionStyle(opt.val),
+                                        transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                                        ...(!submitted && {
+                                            '&:hover': {
+                                                borderColor: selected === opt.val ? 'primary.main' : 'primary.200',
+                                                bgcolor: selected === opt.val ? 'primary.50' : '#f8fafc',
+                                                transform: 'translateX(4px)'
+                                            },
+                                        }),
                                     }}
                                 >
                                     <Box sx={{
-                                        width: 32, height: 32, borderRadius: 1.5,
+                                        width: 32, height: 32, borderRadius: 1.5, flexShrink: 0,
                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                         fontWeight: 800, fontSize: 13,
-                                        bgcolor: selected === opt.val ? 'primary.main' : '#f1f5f9',
-                                        color: selected === opt.val ? 'white' : '#64748b',
-                                        transition: 'all 0.2s'
+                                        bgcolor: badgeColor(opt.val),
+                                        color: badgeTextColor(opt.val),
+                                        transition: 'all 0.25s'
                                     }}>
                                         {opt.key}
                                     </Box>
                                     <Typography sx={{
-                                        fontSize: isMarathi ? 24 : 16, fontWeight: selected === opt.val ? 700 : 500,
-                                        color: selected === opt.val ? 'primary.dark' : '#334155',
-                                        fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : 'inherit'
+                                        fontSize: isMarathi ? 24 : 16,
+                                        fontWeight: submitted && (opt.val === correctAns || opt.val === selected) ? 700 : 500,
+                                        color: submitted && opt.val === correctAns ? 'success.dark'
+                                            : submitted && opt.val === selected ? 'error.dark'
+                                                : selected === opt.val ? 'primary.dark' : '#334155',
+                                        fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : 'inherit',
+                                        flex: 1,
                                     }}>
                                         {opt.lab}
                                     </Typography>
-                                    <Radio
-                                        value={opt.val}
-                                        checked={selected === opt.val}
-                                        sx={{ ml: 'auto', display: 'none' }}
-                                    />
+                                    {/* Correct/wrong icon overlay */}
+                                    {submitted && opt.val === correctAns && <CheckCircle color="success" fontSize="small" />}
+                                    {submitted && opt.val === selected && !isCorrect && <Cancel color="error" fontSize="small" />}
+                                    <Radio value={opt.val} checked={selected === opt.val} sx={{ display: 'none' }} />
                                 </Box>
                             ))}
                         </RadioGroup>
                     </FormControl>
                 </Paper>
 
-                {/* ── Navigation Buttons ── */}
-                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                    <Button
-                        variant="text"
-                        size="large"
-                        startIcon={<ArrowBack />}
-                        onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
-                        disabled={currentIndex === 0}
-                        sx={{ fontWeight: 700, borderRadius: 2, color: '#64748b' }}
+                {/* ── Instant Feedback Banner ── */}
+                {submitted && (
+                    <Alert
+                        severity={isCorrect ? 'success' : 'error'}
+                        icon={isCorrect ? <CheckCircle /> : <Cancel />}
+                        sx={{ mb: 3, borderRadius: 3, fontWeight: 600, fontSize: 15 }}
                     >
+                        {isCorrect
+                            ? 'Correct Answer!'
+                            : `Incorrect. The correct answer is (${correctAns.toUpperCase()}) ${getOptionText(correctAns)}`
+                        }
+                        {q.explanation && (
+                            <Typography variant="body2" sx={{ mt: 0.5, opacity: 0.9 }}>
+                                💡 {q.explanation}
+                            </Typography>
+                        )}
+                    </Alert>
+                )}
+
+                {/* ── Navigation ── */}
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Button variant="text" size="large" startIcon={<ArrowBack />}
+                        onClick={() => goTo(Math.max(0, currentIndex - 1))}
+                        disabled={currentIndex === 0}
+                        sx={{ fontWeight: 700, borderRadius: 2, color: '#64748b' }}>
                         Previous
                     </Button>
 
@@ -386,12 +396,8 @@ export default function MCQSession() {
                         size="large"
                         onClick={next}
                         endIcon={currentIndex === questions.length - 1 ? <CheckCircle /> : <ArrowForward />}
-                        disabled={!selected}
-                        sx={{
-                            px: 6, py: 1.5, borderRadius: 3, fontWeight: 800,
-                            boxShadow: '0 10px 15px -3px rgba(59, 130, 246, 0.3)',
-                            textTransform: 'none'
-                        }}
+                        disabled={!submitted}
+                        sx={{ px: 6, py: 1.5, borderRadius: 3, fontWeight: 800, boxShadow: '0 10px 15px -3px rgba(59, 130, 246, 0.3)', textTransform: 'none' }}
                     >
                         {currentIndex === questions.length - 1 ? 'Finish Assessment' : 'Next Question'}
                     </Button>
