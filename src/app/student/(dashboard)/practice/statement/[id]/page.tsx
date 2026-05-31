@@ -48,6 +48,13 @@ function pad2(n: number) { return String(n).padStart(2, '0'); }
 
 const COL_HEADERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
+// Detect if parsed grid contains DB schema metadata instead of practice content
+const SCHEMA_MARKERS = ['column name', 'data type', 'required', 'description', 'primary key', 'varchar', 'foreign key'];
+function isSchemaGrid(grid: string[][]): boolean {
+    const sample = (grid[0] ?? []).concat(grid[1] ?? []).map(c => (c ?? '').toLowerCase());
+    return SCHEMA_MARKERS.filter(m => sample.some(c => c.includes(m))).length >= 2;
+}
+
 // Pre-defined Statement Data for Demo if parsing fails
 const DEFAULT_GRID = [
     ['', 'NUMBER OF BOOKS IN STOCK', '', '', ''],
@@ -308,14 +315,22 @@ export default function StatementPracticeSession() {
                 // Try to parse grid from template_content
                 try {
                     const parsed = JSON.parse(found.template_content);
-                    if (parsed.data) {
-                        setReferenceGrid(parsed.data);
-                        setMerges(parsed.merges || []);
+                    let grid: string[][] | null = null;
+                    let parsedMerges: MergeRange[] = [];
+                    if (parsed.data && Array.isArray(parsed.data)) {
+                        grid = parsed.data;
+                        parsedMerges = parsed.merges || [];
                     } else if (Array.isArray(parsed)) {
-                        setReferenceGrid(parsed);
+                        grid = parsed;
                     }
+                    // If the parsed grid looks like DB schema documentation, fall back
+                    if (grid && !isSchemaGrid(grid)) {
+                        setReferenceGrid(grid);
+                        setMerges(parsedMerges);
+                    }
+                    // else: keep DEFAULT_GRID (bad content in DB)
                 } catch {
-                    // Fallback to default
+                    // Fallback to default grid — keep DEFAULT_GRID
                 }
             } catch (e: any) { setError(e.message); }
             finally { setLoading(false); }
