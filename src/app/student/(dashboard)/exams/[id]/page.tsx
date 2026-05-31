@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { fmtDateLongIST, fmtTimeIST } from '../../../../../utils/dateIST';
 import { useParams, useRouter } from 'next/navigation';
 import {
     Box, Paper, Typography, Button, CircularProgress,
@@ -176,9 +177,15 @@ export default function ExamSession() {
                             {pattern?.pattern_name}
                         </Typography>
                         <Chip
-                            label={`Exam Date: ${new Date(exam?.exam_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}`}
+                            label={`Exam Date: ${fmtDateLongIST(exam?.exam_date)}`}
                             sx={{ mt: 2, bgcolor: 'rgba(255,255,255,0.15)', color: 'white', fontWeight: 600 }}
                         />
+                        {exam?.start_time && (
+                            <Chip
+                                label={`Time: ${fmtTimeIST(exam.start_time)}`}
+                                sx={{ mt: 1, ml: 1, bgcolor: 'rgba(255,255,255,0.12)', color: 'white', fontWeight: 600 }}
+                            />
+                        )}
                     </Box>
 
                     {/* Exam Plan */}

@@ -7,6 +7,7 @@ import {
     Grid, Avatar, Divider, Button,
 } from '@mui/material';
 import { format, parseISO } from 'date-fns';
+import { fmtDateIST, fmtTimeIST } from '../../../../utils/dateIST';
 import {
     Event, AccessTime, School, PlayArrow, CheckCircle,
     HourglassEmpty, Cancel,
@@ -114,7 +115,7 @@ function ExamCard({ exam }: { exam: any }) {
     const status = exam.status || 'scheduled';
     const cfg = statusConfig[status] || statusConfig.scheduled;
     const isActionable = status === 'scheduled' || status === 'in_progress';
-    const examDate = exam.exam_date ? parseISO(exam.exam_date) : null;
+    const examDateLabel = fmtDateIST(exam.exam_date);
 
     return (
         <Paper elevation={0} variant="outlined" sx={{
@@ -145,11 +146,11 @@ function ExamCard({ exam }: { exam: any }) {
                     <Divider sx={{ my: 1.5 }} />
 
                     <Stack direction="row" spacing={3} flexWrap="wrap">
-                        {examDate && (
+                        {exam.exam_date && (
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                 <Event fontSize="small" color="action" />
                                 <Typography variant="body2" color="text.secondary">
-                                    {format(examDate, 'd MMMM yyyy')}
+                                    {examDateLabel}
                                 </Typography>
                             </Box>
                         )}
@@ -157,7 +158,7 @@ function ExamCard({ exam }: { exam: any }) {
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                 <AccessTime fontSize="small" color="action" />
                                 <Typography variant="body2" color="text.secondary">
-                                    {format(parseISO(exam.start_time), 'hh:mm a')}
+                                    {fmtTimeIST(exam.start_time)}
                                 </Typography>
                             </Box>
                         )}

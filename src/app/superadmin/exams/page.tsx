@@ -16,6 +16,7 @@ import {
 import AdminLayout from '../../components/AdminLayout';
 import { superAdminMenuItems } from '../../components/menuItems';
 import { format, parseISO } from 'date-fns';
+import { fmtDateLongIST, fmtTimeIST, todayIST } from '../../utils/dateIST';
 
 interface ExamRow {
   id: string; student: string; enrollment: string; photoUrl: string | null;
@@ -89,8 +90,7 @@ export default function ExamManagement() {
 
   useEffect(() => { fetchExams(); }, []);
 
-  const today = format(new Date(), 'yyyy-MM-dd');
-  const visibleExams = tab === 0 ? exams : exams.filter(e => e.examDate === today);
+  const visibleExams = tab === 0 ? exams : exams.filter(e => e.examDate === todayIST());
 
   // Build hierarchy: Institute → Batch → Slot
   const hierarchy = useMemo<InstituteGroup[]>(() => {
@@ -118,12 +118,12 @@ export default function ExamManagement() {
       }
       batchGroup.totalExams++;
 
-      const slotTime = e.startTime ? format(parseISO(e.startTime), 'HH:mm') : '??:??';
+      const slotTime = e.startTime ? fmtTimeIST(e.startTime) : '??:??';
       const slotKey = `${e.examDate}_${slotTime}`;
       let slot = batchGroup.slots.find(s => s.key === slotKey);
       if (!slot) {
-        const dateLabel = e.examDate && e.examDate !== '—' ? format(parseISO(e.examDate), 'dd MMM yyyy (EEEE)') : '—';
-        const timeLabel = e.startTime ? format(parseISO(e.startTime), 'hh:mm a') : '—';
+        const dateLabel = fmtDateLongIST(e.examDate !== '—' ? e.examDate : null);
+        const timeLabel = e.startTime ? fmtTimeIST(e.startTime) : '—';
         slot = { key: slotKey, date: e.examDate, dateLabel, time: slotTime, timeLabel, exams: [] };
         batchGroup.slots.push(slot);
       }
@@ -141,7 +141,7 @@ export default function ExamManagement() {
     return Array.from(instMap.values()).sort((a, b) => a.institute.localeCompare(b.institute));
   }, [visibleExams]);
 
-  const todayExams = exams.filter(e => e.examDate === today);
+  const todayExams = exams.filter(e => e.examDate === todayIST());
 
   // ── Reschedule handlers ──
   const openReschedule = (ids: string[]) => {

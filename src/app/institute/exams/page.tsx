@@ -19,6 +19,7 @@ import {
 import AdminLayout from '../../components/AdminLayout';
 import { instituteAdminMenuItems } from '../../components/menuItems';
 import { format, parseISO, addDays } from 'date-fns';
+import { fmtDateLongIST, fmtTimeIST, todayIST } from '../../../utils/dateIST';
 import { generateAdmitCardHtml } from '../../../utils/generateAdmitCardHtml';
 
 /** Compute the minimum selectable exam date (6 days from today) as YYYY-MM-DD */
@@ -128,16 +129,16 @@ export default function ExamsPage() {
   }, [selectedBatch, batches]);
 
   // ── Grouped view — group by date + start_time slot ────────────────────────
-  const visibleExams = tab === 0 ? exams : exams.filter(e => e.exam_date === format(new Date(), 'yyyy-MM-dd'));
+  const visibleExams = tab === 0 ? exams : exams.filter(e => e.exam_date === todayIST());
 
   const groups = useMemo<ExamGroup[]>(() => {
     const map = new Map<string, ExamGroup>();
     for (const e of visibleExams) {
-      const slotTime = e.start_time ? format(parseISO(e.start_time), 'HH:mm') : '??:??';
+      const slotTime = e.start_time ? fmtTimeIST(e.start_time) : '??:??';
       const key = `${e.exam_date}_${slotTime}_${e.batch_id}`;
       if (!map.has(key)) {
-        const dateLabel = e.exam_date ? format(parseISO(e.exam_date), 'dd MMM yyyy (EEEE)') : '—';
-        const timeLabel = e.start_time ? format(parseISO(e.start_time), 'hh:mm a') : '—';
+        const dateLabel = fmtDateLongIST(e.exam_date);
+        const timeLabel = e.start_time ? fmtTimeIST(e.start_time) : '—';
         map.set(key, {
           key, date: dateLabel, time: timeLabel,
           course: e.course_name, batch: e.batch_name,
@@ -165,12 +166,12 @@ export default function ExamsPage() {
       const batchGrp = map.get(bKey)!;
       batchGrp.totalExams++;
 
-      const slotTime = e.start_time ? format(parseISO(e.start_time), 'HH:mm') : '??:??';
+      const slotTime = e.start_time ? fmtTimeIST(e.start_time) : '??:??';
       const slotKey = `${e.exam_date}_${slotTime}`;
       let slot = batchGrp.slots.find(s => s.key === slotKey);
       if (!slot) {
-        const dateLabel = e.exam_date ? format(parseISO(e.exam_date), 'dd MMM yyyy (EEEE)') : '—';
-        const timeLabel = e.start_time ? format(parseISO(e.start_time), 'hh:mm a') : '—';
+        const dateLabel = fmtDateLongIST(e.exam_date);
+        const timeLabel = e.start_time ? fmtTimeIST(e.start_time) : '—';
         slot = { key: slotKey, date: e.exam_date, dateLabel, time: slotTime, timeLabel, exams: [] };
         batchGrp.slots.push(slot);
       }
@@ -265,7 +266,7 @@ export default function ExamsPage() {
     finally { setDeleteSaving(false); }
   };
 
-  const todayExams = exams.filter(e => e.exam_date === format(new Date(), 'yyyy-MM-dd'));
+  const todayExams = exams.filter(e => e.exam_date === todayIST());
   const selectedIds = selection as string[];
   const selectedExams = exams.filter(e => selectedIds.includes(e.id));
   const allScheduled = selectedExams.length > 0 && selectedExams.every(e => e.status === 'scheduled');
@@ -287,10 +288,10 @@ export default function ExamsPage() {
       field: 'start_time', headerName: 'Scheduled', width: 190,
       renderCell: p => p.value ? (
         <Stack>
-          <Typography variant="body2">{format(parseISO(p.value), 'dd MMM yyyy')}</Typography>
+          <Typography variant="body2">{p.row.exam_date ? fmtDateLongIST(p.row.exam_date).split(' (')[0] : fmtDateLongIST(p.row.exam_date)}</Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <AccessTime fontSize="inherit" color="action" />
-            <Typography variant="caption" color="text.secondary">{format(parseISO(p.value), 'hh:mm a')}</Typography>
+            <Typography variant="caption" color="text.secondary">{fmtTimeIST(p.value)}</Typography>
             {p.row.system_name && p.row.system_name !== '—' && (
               <><Computer fontSize="inherit" color="action" sx={{ ml: 0.5 }} />
                 <Typography variant="caption" color="text.secondary">{p.row.system_name}</Typography></>
