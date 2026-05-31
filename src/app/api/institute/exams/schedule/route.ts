@@ -147,16 +147,26 @@ export async function POST(req: NextRequest) {
         const admin = getAdmin();
 
         // ── Fee validation (backend guard — cannot be bypassed via direct API) ──
-        const { data: feeRows } = await admin
-            .from('student_enrollments')
-            .select('student_id, exam_fee_status')
-            .eq('course_id', courseId)
-            .in('student_id', studentIds);
+        // Check BOTH sources: enrollment flag AND actual collected amount.
+        const [feeEnrollRes, feeCollectRes, courseRes] = await Promise.all([
+            admin.from('student_enrollments').select('student_id, exam_fee_status').eq('course_id', courseId).in('student_id', studentIds),
+            admin.from('student_fee_collection').select('student_id, exam_fee_collected').in('student_id', studentIds),
+            admin.from('courses').select('exam_fee').eq('id', courseId).single(),
+        ]);
 
-        const feeStatusMap: Record<string, string> = {};
-        (feeRows ?? []).forEach((r: any) => { feeStatusMap[r.student_id] = r.exam_fee_status; });
+        const enrollMap: Record<string, string> = {};
+        (feeEnrollRes.data ?? []).forEach((r: any) => { enrollMap[r.student_id] = r.exam_fee_status; });
 
-        const feePendingIds = studentIds.filter((id: string) => feeStatusMap[id] !== 'paid');
+        const collectedMap: Record<string, number> = {};
+        (feeCollectRes.data ?? []).forEach((r: any) => {
+            collectedMap[r.student_id] = (collectedMap[r.student_id] ?? 0) + Number(r.exam_fee_collected ?? 0);
+        });
+
+        const courseExamFee = Number((courseRes.data as any)?.exam_fee ?? 1);
+        const isFeePaid = (id: string) =>
+            courseExamFee === 0 || enrollMap[id] === 'paid' || (collectedMap[id] ?? 0) > 0;
+
+        const feePendingIds = studentIds.filter((id: string) => !isFeePaid(id));
         if (feePendingIds.length > 0) {
             return NextResponse.json({
                 error: `Exam cannot be scheduled: ${feePendingIds.length} student(s) have pending exam fees. Complete fee payment before scheduling.`

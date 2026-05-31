@@ -34,39 +34,77 @@ export async function GET(req: NextRequest) {
 
         const instituteId = instAdmin.institute_id;
 
-        // 1. Get all students in this batch belonging to this institute
+        // 1. Fetch all students in this batch for this institute.
+        //    Use neq(is_active, false) instead of eq(is_active, true) so that
+        //    students with is_active = NULL are included (NULL != false in SQL).
         const { data: students, error: stuErr } = await admin
             .from('students')
             .select('id, name, enrollment_number, batch_id, photo_url')
             .eq('institute_id', instituteId)
             .eq('batch_id', batchId)
-            .eq('is_active', true);
+            .neq('is_active', false);
 
         if (stuErr) throw stuErr;
 
-        // 2. Check which students already have a SCHEDULED/IN_PROGRESS exam for this course
-        const studentIds = (students ?? []).map(s => s.id);
+        const studentIds = (students ?? []).map((s: any) => s.id);
+        const idParam = studentIds.length > 0 ? studentIds : ['00000000-0000-0000-0000-000000000000'];
+
+        // 2. Already scheduled/in-progress for this course
         const { data: existingExams } = await admin
             .from('exams')
             .select('student_id, status')
             .eq('course_id', courseId)
             .in('status', ['scheduled', 'in_progress'])
-            .in('student_id', studentIds.length > 0 ? studentIds : ['00000000-0000-0000-0000-000000000000']);
+            .in('student_id', idParam);
 
-        const alreadyScheduledIds = new Set((existingExams ?? []).map(e => e.student_id));
+        const alreadyScheduledIds = new Set((existingExams ?? []).map((e: any) => e.student_id));
 
-        // 3. Get student enrollments to check exam_fee
-        const { data: enrollments } = await admin
-            .from('student_enrollments')
-            .select('student_id, exam_fee_status')
-            .eq('course_id', courseId)
-            .in('student_id', studentIds.length > 0 ? studentIds : ['00000000-0000-0000-0000-000000000000']);
+        // 3. Fee status — check BOTH sources:
+        //    a) student_enrollments.exam_fee_status (enrollment-time flag)
+        //    b) student_fee_collection.exam_fee_collected (actual money collected)
+        //    A student is exam-fee-paid if EITHER source confirms it.
 
-        const feeMap: Record<string, string> = {};
-        (enrollments ?? []).forEach((e: any) => { feeMap[e.student_id] = e.exam_fee_status; });
+        const [enrollmentRes, collectionRes, courseRes] = await Promise.all([
+            admin
+                .from('student_enrollments')
+                .select('student_id, exam_fee_status')
+                .eq('course_id', courseId)
+                .in('student_id', idParam),
+            admin
+                .from('student_fee_collection')
+                .select('student_id, exam_fee_collected')
+                .in('student_id', idParam),
+            admin
+                .from('courses')
+                .select('exam_fee')
+                .eq('id', courseId)
+                .single(),
+        ]);
 
-        const eligibleStudents = (students ?? []).map(s => {
-            const feePaid = feeMap[s.id] === 'paid';
+        // Build enrollment status map
+        const enrollmentMap: Record<string, string> = {};
+        (enrollmentRes.data ?? []).forEach((r: any) => {
+            enrollmentMap[r.student_id] = r.exam_fee_status;
+        });
+
+        // Sum exam_fee_collected per student across all payment records
+        const collectedMap: Record<string, number> = {};
+        (collectionRes.data ?? []).forEach((r: any) => {
+            collectedMap[r.student_id] = (collectedMap[r.student_id] ?? 0) + Number(r.exam_fee_collected ?? 0);
+        });
+
+        // If course exam_fee is 0, all students are fee-eligible regardless
+        const courseExamFee = Number((courseRes.data as any)?.exam_fee ?? 1);
+
+        const isExamFeePaid = (id: string): boolean => {
+            if (courseExamFee === 0) return true;                    // free exam
+            if (enrollmentMap[id] === 'paid') return true;           // enrollment flag
+            if ((collectedMap[id] ?? 0) > 0) return true;           // actual payment collected
+            return false;
+        };
+
+        const eligibleStudents = (students ?? []).map((s: any) => {
+            const feePaid = isExamFeePaid(s.id);
             const alreadyScheduled = alreadyScheduledIds.has(s.id);
             return {
                 ...s,
@@ -80,7 +118,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({
             students: eligibleStudents,
             total_in_batch: students?.length ?? 0,
-            eligible_count: eligibleStudents.filter(s => s.is_eligible).length
+            eligible_count: eligibleStudents.filter((s: any) => s.is_eligible).length,
         });
 
     } catch (err: any) {
