@@ -16,7 +16,7 @@ import {
 import AdminLayout from '../../components/AdminLayout';
 import { superAdminMenuItems } from '../../components/menuItems';
 import { format, parseISO } from 'date-fns';
-import { fmtDateLongIST, fmtTimeIST, todayIST } from '../../utils/dateIST';
+import { fmtDateLongIST, fmtTimeIST, todayIST } from '../../../utils/dateIST';
 
 interface ExamRow {
   id: string; student: string; enrollment: string; photoUrl: string | null;
