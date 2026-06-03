@@ -35,7 +35,7 @@ interface ExamRow {
   attendance: string; system_name: string; center_code: string;
 }
 interface Batch { id: string; batch_name: string; batch_code: string; course_id: string; course_name?: string; }
-interface Student { id: string; name: string; enrollment_number: string; has_photo: boolean; exam_fee_paid: boolean; is_eligible: boolean; already_scheduled: boolean; }
+interface Student { id: string; name: string; enrollment_number: string; has_photo: boolean; exam_fee_paid: boolean; is_eligible: boolean; already_scheduled: boolean; exam_status: string | null; }
 interface SystemItem { id: string; system_name: string; }
 interface ExamGroup { key: string; label: string; date: string; time: string; course: string; batch: string; exams: ExamRow[]; }
 
@@ -724,7 +724,8 @@ export default function ExamsPage() {
                         primaryTypographyProps={{ component: 'div' } as any} secondaryTypographyProps={{ component: 'div' } as any}
                         primary={<Stack component="span" direction="row" alignItems="center" gap={1}>
                           <Typography component="span" variant="body2" fontWeight={600}>{s.name}</Typography>
-                          {s.already_scheduled && <Chip label="Already Scheduled" size="small" color="warning" sx={{ height: 18, fontSize: 10 }} />}
+                          {s.exam_status === 'completed' && <Chip label="Exam Completed" size="small" color="success" sx={{ height: 18, fontSize: 10 }} />}
+                          {(s.exam_status === 'scheduled' || s.exam_status === 'in_progress') && <Chip label="Already Scheduled" size="small" color="warning" sx={{ height: 18, fontSize: 10 }} />}
                         </Stack>}
                         secondary={<Stack component="span" direction="row" alignItems="center" gap={1} sx={{ mt: 0.3 }}>
                           <Typography component="span" variant="caption">{s.enrollment_number}</Typography>

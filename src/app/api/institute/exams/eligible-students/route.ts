@@ -49,15 +49,18 @@ export async function GET(req: NextRequest) {
         const studentIds = (students ?? []).map((s: any) => s.id);
         const idParam = studentIds.length > 0 ? studentIds : ['00000000-0000-0000-0000-000000000000'];
 
-        // 2. Already scheduled/in-progress for this course
+        // 2. Already scheduled, in-progress, or completed for this course
         const { data: existingExams } = await admin
             .from('exams')
             .select('student_id, status')
             .eq('course_id', courseId)
-            .in('status', ['scheduled', 'in_progress'])
+            .in('status', ['scheduled', 'in_progress', 'completed'])
             .in('student_id', idParam);
 
         const alreadyScheduledIds = new Set((existingExams ?? []).map((e: any) => e.student_id));
+        // Map student_id → their exam status so frontend can show correct label
+        const examStatusMap: Record<string, string> = {};
+        (existingExams ?? []).forEach((e: any) => { examStatusMap[e.student_id] = e.status; });
 
         // 3. Fee status — check BOTH sources:
         //    a) student_enrollments.exam_fee_status (enrollment-time flag)
@@ -119,8 +122,10 @@ export async function GET(req: NextRequest) {
         const eligibleStudents = (students ?? []).map((s: any) => {
             const feePaid = isExamFeePaid(s.id);
             const alreadyScheduled = alreadyScheduledIds.has(s.id);
+            const examStatus = examStatusMap[s.id] ?? null; // 'scheduled'|'in_progress'|'completed'|null
             return {
                 ...s,
+                exam_status: examStatus,
                 has_photo: !!s.photo_url,
                 exam_fee_paid: feePaid,
                 already_scheduled: alreadyScheduled,
