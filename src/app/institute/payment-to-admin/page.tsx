@@ -92,12 +92,13 @@ export default function PaymentToAdminPage() {
     const totalPendingExam = pendingExam.reduce((s, r) => s + r.exam_fee, 0);
     const totalPendingDelivery = pendingDelivery.reduce((s, r) => s + r.delivery_fee, 0);
 
-    // Unique batches from pending exam fees for filter dropdown
+    // Unique batches from ALL exam fees (not just pending) so batches with all-paid
+    // students still appear in the filter dropdown
     const batchOptions = useMemo(() => {
         const map = new Map<string, string>();
-        pendingExam.forEach(r => { if (!map.has(r.batch_id)) map.set(r.batch_id, r.batch_name); });
+        examFees.forEach(r => { if (r.batch_id && !map.has(r.batch_id)) map.set(r.batch_id, r.batch_name); });
         return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-    }, [pendingExam]);
+    }, [examFees]);
 
     // Filtered pending rows by batch
     const filteredPending = useMemo(() =>
