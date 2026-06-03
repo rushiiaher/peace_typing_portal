@@ -147,11 +147,13 @@ export async function POST(req: NextRequest) {
         const admin = getAdmin();
 
         // ── Fee validation (backend guard — cannot be bypassed via direct API) ──
-        // Check BOTH sources: enrollment flag AND actual collected amount.
-        const [feeEnrollRes, feeCollectRes, courseRes] = await Promise.all([
+        // Check ALL three sources: enrollment flag, student→institute payment,
+        // and institute→super-admin payment (institute_payments table).
+        const [feeEnrollRes, feeCollectRes, courseRes, instPayRes] = await Promise.all([
             admin.from('student_enrollments').select('student_id, exam_fee_status').eq('course_id', courseId).in('student_id', studentIds),
             admin.from('student_fee_collection').select('student_id, exam_fee_collected').in('student_id', studentIds),
             admin.from('courses').select('exam_fee').eq('id', courseId).single(),
+            admin.from('institute_payments').select('student_id').eq('payment_type', 'exam_fee').in('student_id', studentIds),
         ]);
 
         const enrollMap: Record<string, string> = {};
@@ -162,9 +164,16 @@ export async function POST(req: NextRequest) {
             collectedMap[r.student_id] = (collectedMap[r.student_id] ?? 0) + Number(r.exam_fee_collected ?? 0);
         });
 
+        const instPaidSet = new Set<string>(
+            (instPayRes.data ?? []).map((r: any) => r.student_id).filter(Boolean)
+        );
+
         const courseExamFee = Number((courseRes.data as any)?.exam_fee ?? 1);
         const isFeePaid = (id: string) =>
-            courseExamFee === 0 || enrollMap[id] === 'paid' || (collectedMap[id] ?? 0) > 0;
+            courseExamFee === 0 ||
+            enrollMap[id] === 'paid' ||
+            (collectedMap[id] ?? 0) > 0 ||
+            instPaidSet.has(id);  // institute paid super admin for this student
 
         const feePendingIds = studentIds.filter((id: string) => !isFeePaid(id));
         if (feePendingIds.length > 0) {

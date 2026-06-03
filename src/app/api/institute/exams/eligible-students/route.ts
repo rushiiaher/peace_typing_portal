@@ -61,10 +61,11 @@ export async function GET(req: NextRequest) {
 
         // 3. Fee status — check BOTH sources:
         //    a) student_enrollments.exam_fee_status (enrollment-time flag)
-        //    b) student_fee_collection.exam_fee_collected (actual money collected)
-        //    A student is exam-fee-paid if EITHER source confirms it.
+        //    b) student_fee_collection.exam_fee_collected (student paid institute)
+        //    c) institute_payments (payment_type='exam_fee') (institute paid super admin)
+        //    A student is exam-fee-paid if ANY source confirms it.
 
-        const [enrollmentRes, collectionRes, courseRes] = await Promise.all([
+        const [enrollmentRes, collectionRes, courseRes, instPayRes] = await Promise.all([
             admin
                 .from('student_enrollments')
                 .select('student_id, exam_fee_status')
@@ -79,6 +80,12 @@ export async function GET(req: NextRequest) {
                 .select('exam_fee')
                 .eq('id', courseId)
                 .single(),
+            // Check institute_payments: institute paid super admin exam fee per student
+            admin
+                .from('institute_payments')
+                .select('student_id')
+                .eq('payment_type', 'exam_fee')
+                .in('student_id', idParam),
         ]);
 
         // Build enrollment status map
@@ -93,13 +100,19 @@ export async function GET(req: NextRequest) {
             collectedMap[r.student_id] = (collectedMap[r.student_id] ?? 0) + Number(r.exam_fee_collected ?? 0);
         });
 
+        // Set of students whose exam fee has been paid to super admin by institute
+        const instPaidIds = new Set<string>(
+            (instPayRes.data ?? []).map((r: any) => r.student_id).filter(Boolean)
+        );
+
         // If course exam_fee is 0, all students are fee-eligible regardless
         const courseExamFee = Number((courseRes.data as any)?.exam_fee ?? 1);
 
         const isExamFeePaid = (id: string): boolean => {
             if (courseExamFee === 0) return true;                    // free exam
             if (enrollmentMap[id] === 'paid') return true;           // enrollment flag
-            if ((collectedMap[id] ?? 0) > 0) return true;           // actual payment collected
+            if ((collectedMap[id] ?? 0) > 0) return true;           // student paid institute
+            if (instPaidIds.has(id)) return true;                    // institute paid super admin
             return false;
         };
 
