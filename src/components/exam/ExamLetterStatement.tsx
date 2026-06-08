@@ -3,6 +3,8 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Box, Typography, Button, Paper, Stack, Grid, Tab, Tabs, Chip, Dialog, DialogTitle, DialogContent, DialogActions, ToggleButton, ToggleButtonGroup, Divider } from '@mui/material';
 import { Timer, Description, TableChart, CheckCircle, FormatBold, FormatItalic, FormatUnderlined, FormatAlignLeft, FormatAlignCenter } from '@mui/icons-material';
+import FortuneSheetWrapper from './FortuneSheetWrapper';
+import { convertToFortuneSheetData } from '../../utils/fortuneSheetAdapter';
 
 // ─── Letter Renderer ────────────────────────────────────────────────────────
 
@@ -47,139 +49,7 @@ function LetterDisplay({ content, isMarathi }: { content: any; isMarathi: boolea
     );
 }
 
-// ─── Statement Grid Renderer (Read-Only reference) ──────────────────────────
 
-function StatementDisplayGrid({ content }: { content: string }) {
-    const parsed = useMemo(() => {
-        try { return JSON.parse(content ?? '{}'); } catch { return null; }
-    }, [content]);
-
-    if (!parsed?.data) return <Box sx={{ p: 2, color: 'text.secondary' }}>No table data</Box>;
-
-    const data: any[][] = parsed.data;
-    const merges: any[] = parsed.merges ?? [];
-
-    // Build merge map: key = "row:col", value = {rowspan, colspan}
-    const mergeMap: Record<string, { rowSpan: number; colSpan: number }> = {};
-    const hiddenCells = new Set<string>();
-    for (const m of merges) {
-        const key = `${m.s.r}:${m.s.c}`;
-        mergeMap[key] = { rowSpan: m.e.r - m.s.r + 1, colSpan: m.e.c - m.s.c + 1 };
-        for (let r = m.s.r; r <= m.e.r; r++) {
-            for (let c = m.s.c; c <= m.e.c; c++) {
-                if (r === m.s.r && c === m.s.c) continue;
-                hiddenCells.add(`${r}:${c}`);
-            }
-        }
-    }
-
-    const styles: Record<string, any> = parsed.styles ?? {};
-
-    const maxCols = Math.max(...data.map((r: any[]) => r.length), 1);
-
-    return (
-        <Box sx={{ overflowX: 'auto', border: '1px solid #e0e0e0', borderRadius: 1 }}>
-            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: maxCols * 100 }}>
-                <tbody>
-                    {data.map((row: any[], rIdx: number) => (
-                        <tr key={rIdx}>
-                            {Array.from({ length: maxCols }).map((_, cIdx) => {
-                                const key = `${rIdx}:${cIdx}`;
-                                if (hiddenCells.has(key)) return null;
-                                const m = mergeMap[key];
-                                const st = styles[key] || {};
-                                const cellVal = row[cIdx] ?? '';
-                                return (
-                                    <td
-                                        key={cIdx}
-                                        rowSpan={m?.rowSpan}
-                                        colSpan={m?.colSpan}
-                                        style={{
-                                            border: '1px solid #ccc',
-                                            padding: '4px 8px',
-                                            fontWeight: st.bold ? 700 : 400,
-                                            textAlign: st.align || 'left',
-                                            fontSize: 13,
-                                            whiteSpace: 'pre-wrap',
-                                            background: rIdx === 0 ? '#f1f5f9' : 'white',
-                                            minWidth: 80,
-                                        }}
-                                    >
-                                        {String(cellVal)}
-                                    </td>
-                                );
-                            })}
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </Box>
-    );
-}
-
-// ─── Student Input Grid ──────────────────────────────────────────────────────
-
-function StatementInputGrid({ refContent, isMarathi }: { refContent: string; isMarathi: boolean }) {
-    const parsed = useMemo(() => {
-        try { return JSON.parse(refContent ?? '{}'); } catch { return null; }
-    }, [refContent]);
-
-    const refData: any[][] = parsed?.data ?? [];
-    const rows = Math.max(refData.length, 5);
-    const cols = Math.max(...refData.map((r: any[]) => r.length), 4);
-
-    const [grid, setGrid] = useState<string[][]>(() => Array(rows).fill(0).map(() => Array(cols).fill('')));
-
-    const update = (r: number, c: number, val: string) => {
-        setGrid(prev => {
-            const next = prev.map(row => [...row]);
-            next[r][c] = val;
-            return next;
-        });
-    };
-
-    const colHeaders = Array.from({ length: cols }, (_, i) => String.fromCharCode(65 + i));
-
-    return (
-        <Box sx={{ overflowX: 'auto', border: '2px solid', borderColor: 'primary.200', borderRadius: 1 }}>
-            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: cols * 110 }}>
-                <thead>
-                    <tr>
-                        <th style={{ border: '1px solid #ccc', background: '#e2e8f0', padding: '4px 8px', fontSize: 12, width: 36 }}>#</th>
-                        {colHeaders.map(h => (
-                            <th key={h} style={{ border: '1px solid #ccc', background: '#e2e8f0', padding: '4px 8px', fontSize: 12, textAlign: 'center', minWidth: 100 }}>{h}</th>
-                        ))}
-                    </tr>
-                </thead>
-                <tbody>
-                    {grid.map((row, r) => (
-                        <tr key={r}>
-                            <td style={{ border: '1px solid #ccc', background: '#f8fafc', textAlign: 'center', fontSize: 12, fontWeight: 600, padding: 4 }}>{r + 1}</td>
-                            {row.map((val, c) => (
-                                <td key={c} style={{ border: '1px solid #ccc', padding: 0, margin: 0 }}>
-                                    <input
-                                        value={val}
-                                        onChange={e => update(r, c, e.target.value)}
-                                        style={{
-                                            width: '100%',
-                                            border: 'none',
-                                            outline: 'none',
-                                            padding: '5px 8px',
-                                            fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : 'system-ui, sans-serif',
-                                            fontSize: isMarathi ? 18 : 13,
-                                        }}
-                                        onFocus={e => e.target.style.background = '#eff6ff'}
-                                        onBlur={e => e.target.style.background = 'white'}
-                                    />
-                                </td>
-                            ))}
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </Box>
-    );
-}
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -259,6 +129,8 @@ function LetterEditor({ isMarathi }: { isMarathi: boolean }) {
 }
 
 export default function ExamLetterStatement({ letter, statement, duration, onComplete }: any) {
+    const [letterHtml, setLetterHtml] = useState('');
+    const [statementGrid, setStatementGrid] = useState<any[]>([]);
     const [timeLeft, setTimeLeft] = useState(duration * 60);
     const [activeTab, setActiveTab] = useState<'letter' | 'statement'>('letter');
     const [confirmOpen, setConfirmOpen] = useState(false);
@@ -357,7 +229,7 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
                             </Typography>
                             <Paper variant="outlined" sx={{ p: 2, bgcolor: '#fafafa', mb: 3, userSelect: 'none', pointerEvents: 'none' }}>
                                 {statement ? (
-                                    <StatementDisplayGrid content={statement.template_content} />
+                                    <FortuneSheetWrapper data={convertToFortuneSheetData(statement.template_content, "Reference")} readOnly={true} />
                                 ) : (
                                     <Typography color="text.secondary">No statement template assigned.</Typography>
                                 )}
@@ -367,7 +239,11 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
                                 ✏️ Your Statement Editor (Fill in the table below)
                             </Typography>
                             {statement ? (
-                                <StatementInputGrid refContent={statement.template_content} isMarathi={isMarathi} />
+                                <FortuneSheetWrapper 
+                                    data={convertToFortuneSheetData(statement.template_content, "My Statement")} 
+                                    onChange={(updatedData) => setStatementGrid(updatedData)} 
+                                    readOnly={false} 
+                                />
                             ) : (
                                 <Typography color="text.secondary">No statement template assigned.</Typography>
                             )}

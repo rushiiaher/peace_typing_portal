@@ -31,6 +31,7 @@ export default function ExamSession() {
     const [error, setError] = useState('');
     const [examData, setExamData] = useState<any>(null);
     const [step, setStep] = useState(0); // 0: Intro, 1-3: sections, 4: done
+    const [finalResult, setFinalResult] = useState<any>(null);
     const [starting, setStarting] = useState(false);
     const [fsWarning, setFsWarning] = useState(false);   // fullscreen-exit warning dialog
     const [fsViolations, setFsViolations] = useState(0); // count of exits
@@ -120,21 +121,41 @@ export default function ExamSession() {
         finally { setStarting(false); }
     };
 
-    const finishExam = async (speedStats?: any) => {
+    const handleSection1Complete = async (data: any) => {
+        try {
+            await fetch(`/api/student/exams/${id}/submit-section`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ section: 1, data })
+            });
+        } catch (e) { console.error('Failed saving section 1', e); }
+        finally { setStep(2); }
+    };
+
+    const handleSection2Complete = async (data: any) => {
+        try {
+            await fetch(`/api/student/exams/${id}/submit-section`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ section: 2, data })
+            });
+        } catch (e) { console.error('Failed saving section 2', e); }
+        finally { setStep(3); }
+    };
+
+    const handleSection3Complete = async (speedStats: any) => {
         examActiveRef.current = false;
         exitFullscreen();
         try {
-            await fetch(`/api/student/exams/${id}`, {
-                method: 'PATCH',
+            const res = await fetch(`/api/student/exams/${id}/submit-section`, {
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    status: 'completed',
-                    results: { totalMarks: speedStats?.wpm || 0 }
-                }),
+                body: JSON.stringify({ section: 3, data: speedStats })
             });
-        } catch { /* silent */ } finally {
-            setStep(4);
-        }
+            const json = await res.json();
+            if (json.answer) setFinalResult(json.answer);
+        } catch (e) { console.error('Failed saving section 3', e); }
+        finally { setStep(4); }
     };
 
     const reEnterFullscreen = async () => {
@@ -305,7 +326,7 @@ export default function ExamSession() {
                     mcqs={content?.mcq}
                     email={content?.email}
                     duration={sec1Dur}
-                    onComplete={() => setStep(2)}
+                    onComplete={handleSection1Complete}
                 />
             )}
 
@@ -314,7 +335,7 @@ export default function ExamSession() {
                     letter={content?.letter}
                     statement={content?.statement}
                     duration={sec2Dur}
-                    onComplete={() => setStep(3)}
+                    onComplete={handleSection2Complete}
                 />
             )}
 
@@ -322,20 +343,49 @@ export default function ExamSession() {
                 <ExamSpeedSection
                     passage={content?.speed}
                     courseWpm={passWpm}
-                    onComplete={finishExam}
+                    onComplete={handleSection3Complete}
                 />
             )}
 
             {step === 4 && (
-                <Box sx={{ maxWidth: 520, mx: 'auto', textAlign: 'center', py: 8 }}>
+                <Box sx={{ maxWidth: 600, mx: 'auto', textAlign: 'center', py: 8 }}>
                     <Paper elevation={3} sx={{ p: 6, borderRadius: 4, background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)' }}>
                         <CheckCircle sx={{ fontSize: 80, color: 'success.main', mb: 2 }} />
                         <Typography variant="h4" fontWeight={800} gutterBottom>Exam Submitted!</Typography>
+                        
+                        {finalResult && (
+                            <Paper variant="outlined" sx={{ p: 3, my: 4, bgcolor: 'rgba(255,255,255,0.8)', textAlign: 'left' }}>
+                                <Typography variant="h6" fontWeight={700} gutterBottom align="center">Provisional Result</Typography>
+                                <Stack spacing={2} sx={{ mt: 2 }}>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <Typography fontWeight={600}>Section 1 (MCQ)</Typography>
+                                        <Chip label={`${finalResult.mcq_marks_obtained || 0}/50`} color={finalResult.mcq_marks_obtained >= 20 ? 'success' : 'error'} />
+                                    </Box>
+                                    <Divider />
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <Typography fontWeight={600}>Section 3 (Speed)</Typography>
+                                        <Stack direction="row" spacing={1}>
+                                            <Chip label={`${finalResult.speed_wpm || 0} WPM`} variant="outlined" />
+                                            <Chip label={`${finalResult.speed_accuracy || 0}% Acc`} variant="outlined" />
+                                            <Chip label={finalResult.speed_passed ? 'Pass' : 'Fail'} color={finalResult.speed_passed ? 'success' : 'error'} />
+                                        </Stack>
+                                    </Box>
+                                    <Divider />
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: 'primary.50', p: 1, borderRadius: 1 }}>
+                                        <Typography fontWeight={700}>Overall Result</Typography>
+                                        <Typography variant="h6" fontWeight={800} color={finalResult.overall_result === 'pass' ? 'success.main' : 'error.main'}>
+                                            {finalResult.overall_result?.toUpperCase() || 'EVALUATING'}
+                                        </Typography>
+                                    </Box>
+                                </Stack>
+                            </Paper>
+                        )}
+
                         <Typography color="text.secondary" sx={{ mb: 4 }}>
-                            Your exam has been recorded successfully. The results will be verified by the institute and your certificate will be generated after evaluation.
+                            Your exam has been recorded successfully. The final results will be verified by the institute and your certificate will be generated after evaluation.
                         </Typography>
                         <Button variant="contained" size="large" onClick={() => router.push('/student/exams')}>
-                            View My Exams
+                            Return to Dashboard
                         </Button>
                     </Paper>
                 </Box>

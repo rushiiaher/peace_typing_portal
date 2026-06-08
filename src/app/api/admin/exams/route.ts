@@ -20,7 +20,10 @@ export async function GET() {
 
         const { data: rawExams, error: examErr } = await admin
             .from('exams')
-            .select('id, student_id, course_id, batch_id, system_id, exam_date, start_time, end_time, reporting_time, status, attendance_status, exam_center_code')
+            .select(`
+                id, student_id, course_id, batch_id, system_id, exam_date, start_time, end_time, reporting_time, status, attendance_status, exam_center_code, result,
+                exam_answers ( mcq_marks_obtained, speed_wpm, speed_accuracy, speed_passed, overall_result, result_breakdown )
+            `)
             .order('exam_date', { ascending: true })
             .order('start_time', { ascending: true });
         if (examErr) throw examErr;
@@ -82,6 +85,8 @@ export async function GET() {
                 status: e.status ?? '—',
                 attendance: e.attendance_status ?? 'pending',
                 centerCode: e.exam_center_code ?? '—',
+                result: e.result ?? null,
+                examAnswers: e.exam_answers?.[0] ?? null,
             };
         });
 

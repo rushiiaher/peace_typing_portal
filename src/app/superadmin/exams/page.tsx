@@ -27,7 +27,11 @@ interface ExamRow {
   examDate: string; startTime: string | null; endTime: string | null;
   reportingTime: string | null;
   status: string; attendance: string; centerCode: string;
+  examAnswers?: any;
+  result?: string;
 }
+
+
 
 function statusColor(s: string): 'default' | 'primary' | 'warning' | 'success' | 'error' {
   if (s === 'completed') return 'success';
@@ -304,6 +308,8 @@ export default function ExamManagement() {
                                   <TableCell sx={{ fontWeight: 700 }}>System</TableCell>
                                   <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
                                   <TableCell sx={{ fontWeight: 700 }}>Attendance</TableCell>
+                                  <TableCell sx={{ fontWeight: 700 }}>MCQ / Speed</TableCell>
+                                  <TableCell sx={{ fontWeight: 700 }}>Result</TableCell>
                                 </TableRow>
                               </TableHead>
                               <TableBody>
@@ -336,6 +342,23 @@ export default function ExamManagement() {
                                     <TableCell>
                                       <Chip size="small" label={e.attendance?.toUpperCase()}
                                         variant="outlined" color={attColor(e.attendance)} />
+                                    </TableCell>
+                                    <TableCell>
+                                      {e.examAnswers ? (
+                                        <Box>
+                                          <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>
+                                            MCQ: {e.examAnswers.mcq_marks_obtained ?? 0}/50
+                                          </Typography>
+                                          <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                                            Spd: {e.examAnswers.speed_wpm ?? 0} WPM ({e.examAnswers.speed_accuracy ?? 0}%)
+                                          </Typography>
+                                        </Box>
+                                      ) : <Typography variant="caption" color="text.disabled">—</Typography>}
+                                    </TableCell>
+                                    <TableCell>
+                                      {e.status === 'completed' && e.result ? (
+                                        <Chip size="small" label={e.result.toUpperCase()} color={e.result === 'pass' ? 'success' : 'error'} />
+                                      ) : <Typography variant="caption" color="text.disabled">—</Typography>}
                                     </TableCell>
                                   </TableRow>
                                 ))}

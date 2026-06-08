@@ -33,6 +33,7 @@ interface ExamRow {
   exam_date: string; start_time: string; reporting_time: string; status: string;
   result: string | null; wpm: number | null;
   attendance: string; system_name: string; center_code: string;
+  examAnswers?: any;
 }
 interface Batch { id: string; batch_name: string; batch_code: string; course_id: string; course_name?: string; }
 interface Student { id: string; name: string; enrollment_number: string; has_photo: boolean; exam_fee_paid: boolean; is_eligible: boolean; already_scheduled: boolean; exam_status: string | null; }
@@ -305,13 +306,18 @@ export default function ExamsPage() {
       renderCell: p => <Chip label={p.value?.replace('_', ' ').toUpperCase()} color={statusColor(p.value)} size="small" />
     },
     {
-      field: 'result', headerName: 'Result', width: 130,
+      field: 'result', headerName: 'Result', width: 170,
       renderCell: p => {
         if (!p.row.result) return <Typography variant="caption" color="text.secondary">—</Typography>;
         return (
-          <Stack>
+          <Stack spacing={0.5}>
             <Chip label={p.row.result.toUpperCase()} size="small" color={p.row.result === 'pass' ? 'success' : 'error'} />
-            {p.row.wpm != null && <Typography variant="caption" color="text.secondary">{p.row.wpm} WPM</Typography>}
+            {p.row.examAnswers && (
+              <Box>
+                <Typography variant="caption" display="block" color="text.secondary">MCQ: {p.row.examAnswers.mcq_marks_obtained ?? 0}/50</Typography>
+                <Typography variant="caption" display="block" color="text.secondary">Spd: {p.row.examAnswers.speed_wpm ?? 0} WPM ({p.row.examAnswers.speed_accuracy ?? 0}%)</Typography>
+              </Box>
+            )}
           </Stack>
         );
       }
@@ -481,7 +487,12 @@ export default function ExamsPage() {
                                 {e.result ? (
                                   <Stack spacing={0.3}>
                                     <Chip size="small" label={e.result.toUpperCase()} color={e.result === 'pass' ? 'success' : 'error'} />
-                                    {e.wpm != null && <Typography variant="caption" color="text.secondary">{e.wpm} WPM</Typography>}
+                                    {e.examAnswers && (
+                                      <Box>
+                                        <Typography variant="caption" display="block" color="text.secondary">MCQ: {e.examAnswers.mcq_marks_obtained ?? 0}/50</Typography>
+                                        <Typography variant="caption" display="block" color="text.secondary">Spd: {e.examAnswers.speed_wpm ?? 0} ({e.examAnswers.speed_accuracy ?? 0}%)</Typography>
+                                      </Box>
+                                    )}
                                   </Stack>
                                 ) : <Typography variant="caption" color="text.secondary">—</Typography>}
                               </TableCell>

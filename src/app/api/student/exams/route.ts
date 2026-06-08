@@ -27,9 +27,10 @@ export async function GET() {
         const { data: exams, error } = await admin
             .from('exams')
             .select(`
-                id, exam_date, start_time, status, result, attendance_status,
+                id, exam_date, start_time, status, result, attendance_status, total_marks_obtained,
                 courses ( name, passing_criteria_wpm ),
-                exam_patterns ( pattern_name, sequence_order, section_1_duration, section_2_duration )
+                exam_patterns ( pattern_name, sequence_order, section_1_duration, section_2_duration ),
+                exam_answers ( mcq_marks_obtained, speed_wpm, speed_accuracy, speed_passed, overall_result, result_breakdown )
             `)
             .eq('student_id', user.id)
             .order('exam_date', { ascending: false });

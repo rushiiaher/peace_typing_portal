@@ -27,12 +27,16 @@ export default function ExamMCQEmail({ mcqs, email, duration, onComplete }: any)
     const onCompleteRef = useRef(onComplete);
     useEffect(() => { onCompleteRef.current = onComplete; }, [onComplete]);
 
+    const handleComplete = useCallback(() => {
+        onCompleteRef.current({ answers, emailValues });
+    }, [answers, emailValues]);
+
     // Timer — stable interval, reads latest onComplete via ref
     useEffect(() => {
         const timer = setInterval(() => {
             setTimeLeft((prev: number) => {
                 if (prev <= 1) {
-                    onCompleteRef.current();
+                    handleComplete();
                     return 0;
                 }
                 return prev - 1;
@@ -271,7 +275,7 @@ export default function ExamMCQEmail({ mcqs, email, duration, onComplete }: any)
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setShowSubmitConfirm(false)}>Cancel</Button>
-                    <Button variant="contained" color="primary" onClick={onComplete}>Confirm Submit</Button>
+                    <Button variant="contained" color="primary" onClick={handleComplete}>Confirm Submit</Button>
                 </DialogActions>
             </Dialog>
         </Box>
