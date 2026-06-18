@@ -26,7 +26,6 @@ export async function GET(req: NextRequest) {
 
         const admin = getAdmin();
 
-        // If institute_id provided, pre-fetch batch IDs for that institute to filter exams
         let batchIdFilter: string[] | null = null;
         if (institute_id) {
             let bq = admin.from('batches').select('id').eq('institute_id', institute_id);
@@ -51,7 +50,7 @@ export async function GET(req: NextRequest) {
                 batch_id,
                 course_id,
                 student_id,
-                students ( id, name, email, enrollment_number, mother_name ),
+                students ( id, name, email, enrollment_number, mother_name, photo_url ),
                 batches ( id, batch_name, batch_code, institute_id, institutes ( id, name, code ) ),
                 courses ( id, name, code ),
                 exam_patterns ( total_marks, passing_marks )
@@ -85,6 +84,7 @@ export async function GET(req: NextRequest) {
                 email: r.students?.email ?? '',
                 enrollment_number: r.students?.enrollment_number ?? '',
                 mother_name: r.students?.mother_name ?? '',
+                photo_url: r.students?.photo_url ?? null,
                 institute_id: r.batches?.institutes?.id ?? '',
                 institute_name: r.batches?.institutes?.name ?? '—',
                 course_id: r.course_id,
@@ -115,6 +115,31 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ results: rows, total: rows.length });
     } catch (err: any) {
         console.error('[admin/final-results GET]', err);
+        return NextResponse.json({ error: err.message }, { status: 500 });
+    }
+}
+
+// PATCH — toggle certificate_generated for one or more exams
+export async function PATCH(req: NextRequest) {
+    try {
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+        const body = await req.json();
+        const { ids, certificate_generated } = body;
+        if (!ids || !Array.isArray(ids) || ids.length === 0)
+            return NextResponse.json({ error: 'ids array required' }, { status: 400 });
+
+        const admin = getAdmin();
+        const { error } = await admin
+            .from('exams')
+            .update({ certificate_generated: !!certificate_generated })
+            .in('id', ids);
+
+        if (error) throw error;
+        return NextResponse.json({ message: 'Updated.' });
+    } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
     }
 }
