@@ -179,6 +179,7 @@ export default function ExamSession() {
     const pattern = exam?.exam_patterns;
     const course = exam?.courses;
     const passWpm = course?.passing_criteria_wpm || 30;
+    const isMarathi = course?.language_name?.toLowerCase().includes('marathi') ?? false;
     const sec1Dur = pattern?.section_1_duration || 25;
     const sec2Dur = pattern?.section_2_duration || 25;
 
@@ -336,6 +337,7 @@ export default function ExamSession() {
                     statement={content?.statement}
                     duration={sec2Dur}
                     onComplete={handleSection2Complete}
+                    isMarathi={isMarathi}
                 />
             )}
 

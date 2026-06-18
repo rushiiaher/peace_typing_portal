@@ -217,7 +217,7 @@ export default function StatementPracticeSession() {
                 <Box sx={{ flex: 1, minWidth: 500, height: '100%', display: 'flex', flexDirection: 'column' }}>
                     <Typography sx={{ color: '#fff', fontSize: 11, fontWeight: 700, mb: 0.5 }}>REFERENCE SHEET (Read Only)</Typography>
                     <Box sx={{ flex: 1, bgcolor: '#fff', boxShadow: 4 }}>
-                        <FortuneSheetWrapper data={referenceData} readOnly={true} />
+                        <FortuneSheetWrapper data={referenceData} readOnly={true} isMarathi={isMarathi} />
                     </Box>
                 </Box>
 
@@ -225,7 +225,7 @@ export default function StatementPracticeSession() {
                 <Box sx={{ flex: 1, minWidth: 500, height: '100%', display: 'flex', flexDirection: 'column' }}>
                     <Typography sx={{ color: '#fff', fontSize: 11, fontWeight: 700, mb: 0.5 }}>YOUR EXCEL EDITOR</Typography>
                     <Box sx={{ flex: 1, bgcolor: '#fff', boxShadow: 4 }}>
-                        <FortuneSheetWrapper data={studentData} onChange={handleStudentDataChange} readOnly={false} />
+                        <FortuneSheetWrapper data={studentData} onChange={handleStudentDataChange} readOnly={false} isMarathi={isMarathi} />
                     </Box>
                 </Box>
             </Box>

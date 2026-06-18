@@ -128,16 +128,17 @@ function LetterEditor({ isMarathi }: { isMarathi: boolean }) {
     );
 }
 
-export default function ExamLetterStatement({ letter, statement, duration, onComplete }: any) {
+export default function ExamLetterStatement({ letter, statement, duration, onComplete, isMarathi: isMarathiProp }: any) {
     const [letterHtml, setLetterHtml] = useState('');
     const [statementGrid, setStatementGrid] = useState<any[]>([]);
     const [timeLeft, setTimeLeft] = useState(duration * 60);
     const [activeTab, setActiveTab] = useState<'letter' | 'statement'>('letter');
     const [confirmOpen, setConfirmOpen] = useState(false);
 
-    const isMarathi = letter?.courses?.language_name?.toLowerCase().includes('marathi') ||
-        letter?.title?.toLowerCase().includes('marathi') ||
-        statement?.title?.toLowerCase().includes('marathi');
+    // Use explicit prop from parent (derived from course language), fall back to title heuristic
+    const isMarathi = isMarathiProp ??
+        (letter?.title?.toLowerCase().includes('marathi') ||
+        statement?.title?.toLowerCase().includes('marathi'));
 
     const onCompleteRef = useRef(onComplete);
     useEffect(() => { onCompleteRef.current = onComplete; }, [onComplete]);
@@ -229,7 +230,7 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
                             </Typography>
                             <Paper variant="outlined" sx={{ p: 2, bgcolor: '#fafafa', mb: 3, userSelect: 'none', pointerEvents: 'none' }}>
                                 {statement ? (
-                                    <FortuneSheetWrapper data={convertToFortuneSheetData(statement.template_content, "Reference")} readOnly={true} />
+                                    <FortuneSheetWrapper data={convertToFortuneSheetData(statement.template_content, "Reference")} readOnly={true} isMarathi={isMarathi} />
                                 ) : (
                                     <Typography color="text.secondary">No statement template assigned.</Typography>
                                 )}
@@ -239,10 +240,12 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
                                 ✏️ Your Statement Editor (Fill in the table below)
                             </Typography>
                             {statement ? (
-                                <FortuneSheetWrapper 
-                                    data={convertToFortuneSheetData(statement.template_content, "My Statement")} 
-                                    onChange={(updatedData) => setStatementGrid(updatedData)} 
-                                    readOnly={false} 
+                                <FortuneSheetWrapper
+                                    data={[{ name: 'My Statement', celldata: [], status: 1 }]}
+                                    onChange={(updatedData) => setStatementGrid(updatedData)}
+                                    readOnly={false}
+                                    isMarathi={isMarathi}
+                                    height={600}
                                 />
                             ) : (
                                 <Typography color="text.secondary">No statement template assigned.</Typography>

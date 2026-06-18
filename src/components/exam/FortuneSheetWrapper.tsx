@@ -14,11 +14,24 @@ interface FortuneSheetWrapperProps {
     data: any; // FortuneSheet cell data array
     onChange?: (data: any) => void;
     readOnly?: boolean;
+    isMarathi?: boolean;
+    height?: number;
 }
 
-export default function FortuneSheetWrapper({ data, onChange, readOnly = false }: FortuneSheetWrapperProps) {
+export default function FortuneSheetWrapper({ data, onChange, readOnly = false, isMarathi = false, height = 500 }: FortuneSheetWrapperProps) {
+    // Apply Marathi font to all cells when isMarathi
+    const processedData = isMarathi
+        ? (data ?? []).map((sheet: any) => ({
+            ...sheet,
+            celldata: (sheet.celldata ?? []).map((cell: any) => ({
+                ...cell,
+                v: cell.v ? { ...cell.v, ff: 'Kruti Dev 010', fs: 14 } : cell.v,
+            })),
+        }))
+        : data;
+
     const defaultSettings = {
-        data,
+        data: processedData,
         lang: 'en',
         showToolbar: !readOnly,
         showGridHeading: true,
@@ -40,7 +53,7 @@ export default function FortuneSheetWrapper({ data, onChange, readOnly = false }
     };
 
     return (
-        <Box sx={{ width: '100%', height: '500px', border: '1px solid #ccc', borderRadius: 1, overflow: 'hidden' }}>
+        <Box sx={{ width: '100%', height: `${height}px`, border: '1px solid #ccc', borderRadius: 1, overflow: 'hidden' }}>
             <Workbook {...defaultSettings} />
         </Box>
     );
