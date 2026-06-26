@@ -72,6 +72,15 @@ function LetterEditor({ isMarathi, readOnly, editorRef }: LetterEditorProps) {
 
     const updateCount = () => setCharCount(editorRef.current?.innerText?.length ?? 0);
 
+    // Tab key → insert tab char (indentation) instead of moving focus
+    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            document.execCommand('insertText', false, '\t');
+            updateCount();
+        }
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
     return (
         <Box>
             {/* Formatting toolbar — hidden when read-only */}
@@ -111,6 +120,7 @@ function LetterEditor({ isMarathi, readOnly, editorRef }: LetterEditorProps) {
                 contentEditable={!readOnly}
                 suppressContentEditableWarning
                 onInput={updateCount}
+                onKeyDown={handleKeyDown}
                 data-placeholder={readOnly ? '' : 'Type the letter exactly as shown in the reference…'}
                 sx={{
                     minHeight: 500,
@@ -124,6 +134,8 @@ function LetterEditor({ isMarathi, readOnly, editorRef }: LetterEditorProps) {
                     fontSize: isMarathi ? 20 : 14,
                     lineHeight: 2,
                     color: '#1e293b',
+                    whiteSpace: 'pre-wrap',
+                    tabSize: 4,
                     overflowY: 'auto',
                     cursor: readOnly ? 'default' : 'text',
                     pointerEvents: readOnly ? 'none' : 'auto',
@@ -280,8 +292,8 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
                 </Stack>
             </Paper>
 
-            {/* ── Letter Writing tab ── */}
-            {activeTab === 'letter' && (
+            {/* ── Letter Writing tab — kept mounted (display toggle) to preserve draft ── */}
+            <Box sx={{ display: activeTab === 'letter' ? 'block' : 'none' }}>
                 <Paper elevation={1} sx={{ p: 3, borderRadius: 2 }}>
                     {letterSubmitted && (
                         <Alert severity="success" icon={<CheckCircle />} sx={{ mb: 2, borderRadius: 1 }}>
@@ -326,10 +338,12 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
                         </Grid>
                     </Grid>
                 </Paper>
-            )}
+            </Box>
 
-            {/* ── Statement Writing tab — 50:50 split ── */}
-            {activeTab === 'statement' && (
+            {/* ── Statement Writing tab — 50:50 split. Mounted only after unlock,
+                 then kept mounted (display toggle) so grid draft is preserved. ── */}
+            {letterSubmitted && (
+                <Box sx={{ display: activeTab === 'statement' ? 'block' : 'none' }}>
                 <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden' }}>
                     <Grid container>
                         {/* Left — Reference (read-only) */}
@@ -383,6 +397,7 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
                         </Grid>
                     </Grid>
                 </Paper>
+                </Box>
             )}
 
             {/* ── Letter submit confirm ── */}
