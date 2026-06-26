@@ -11,7 +11,7 @@ import {
 import {
     QuestionAnswer, Email, Description, TableChart, Speed, CheckCircle,
     AccessTime, School, PlayArrow, HowToReg, Block, Fullscreen, Warning,
-    Lock, LockOpen, RadioButtonChecked,
+    Lock, RadioButtonChecked,
 } from '@mui/icons-material';
 import ExamMCQEmail from '../../../../../components/exam/ExamMCQEmail';
 import ExamLetterStatement from '../../../../../components/exam/ExamLetterStatement';
@@ -27,8 +27,8 @@ const SECTION_LABELS = [
 const SECTION_COLORS = ['#3b82f6', '#f59e0b', '#10b981'];
 
 // ── Custom StepIcon for locked/active/done states ─────────────────────────────
-function SectionStepIcon({ step, active, completed, locked }: {
-    step: number; active: boolean; completed: boolean; locked: boolean;
+function SectionStepIcon({ step, active, completed }: {
+    step: number; active: boolean; completed: boolean;
 }) {
     if (completed) return <CheckCircle sx={{ color: '#16a34a', fontSize: 28 }} />;
     if (active)    return <RadioButtonChecked sx={{ color: SECTION_COLORS[step - 1], fontSize: 28 }} />;
@@ -369,7 +369,6 @@ export default function ExamSession() {
                                                 step={sectionNum}
                                                 active={active}
                                                 completed={done}
-                                                locked={locked}
                                             />
                                         )}
                                         sx={{

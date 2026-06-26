@@ -7,7 +7,7 @@ import {
     ToggleButton, ToggleButtonGroup, Divider, Tooltip, Alert,
 } from '@mui/material';
 import {
-    Timer, Description, TableChart, CheckCircle,
+    Timer, Description, CheckCircle,
     FormatBold, FormatItalic, FormatUnderlined,
     FormatAlignLeft, FormatAlignCenter, Lock, LockOpen, EastOutlined,
 } from '@mui/icons-material';
@@ -70,7 +70,10 @@ function LetterEditor({ isMarathi, readOnly, editorRef }: LetterEditorProps) {
         document.execCommand(cmd, false, undefined);
     }, [editorRef]);
 
-    const updateCount = () => setCharCount(editorRef.current?.innerText?.length ?? 0);
+    const updateCount = useCallback(
+        () => setCharCount(editorRef.current?.innerText?.length ?? 0),
+        [editorRef],
+    );
 
     // Tab key → insert tab char (indentation) instead of moving focus
     const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -79,7 +82,7 @@ function LetterEditor({ isMarathi, readOnly, editorRef }: LetterEditorProps) {
             document.execCommand('insertText', false, '\t');
             updateCount();
         }
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [updateCount]);
 
     return (
         <Box>
@@ -213,8 +216,6 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
         const html = letterEditorRef.current?.innerHTML ?? '';
         onCompleteRef.current({ letterHtml: html, statementGrid });
     };
-
-    const letterCharCount = letterEditorRef.current?.innerText?.length ?? 0;
 
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
