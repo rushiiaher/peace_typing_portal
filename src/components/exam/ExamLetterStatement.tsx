@@ -328,34 +328,61 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
                 </Paper>
             )}
 
-            {/* ── Statement Writing tab ── */}
+            {/* ── Statement Writing tab — 50:50 split ── */}
             {activeTab === 'statement' && (
-                <Paper elevation={1} sx={{ p: 3, borderRadius: 2 }}>
-                    <Grid container spacing={3}>
-                        <Grid item xs={12}>
-                            <Typography variant="overline" color="text.secondary" fontWeight={700} sx={{ display: 'block', mb: 1 }}>
-                                📊 Reference Table (Read Only)
-                            </Typography>
-                            <Paper variant="outlined" sx={{ p: 2, bgcolor: '#fafafa', mb: 3, userSelect: 'none', pointerEvents: 'none' }}>
+                <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden' }}>
+                    <Grid container sx={{ height: 'calc(100vh - 180px)', minHeight: 500 }}>
+                        {/* Left — Reference (read-only) */}
+                        <Grid item xs={12} lg={6} sx={{
+                            display: 'flex', flexDirection: 'column',
+                            borderRight: { lg: '3px solid' }, borderRightColor: { lg: 'divider' },
+                            borderBottom: { xs: '3px solid', lg: 'none' }, borderBottomColor: { xs: 'divider' },
+                        }}>
+                            <Box sx={{
+                                px: 2, py: 1, bgcolor: '#fafafa',
+                                borderBottom: '1px solid', borderBottomColor: 'divider',
+                                flexShrink: 0,
+                            }}>
+                                <Typography variant="overline" color="text.secondary" fontWeight={700}>
+                                    📊 Reference Table (Read Only)
+                                </Typography>
+                            </Box>
+                            <Box sx={{ flex: 1, overflow: 'hidden', userSelect: 'none', pointerEvents: 'none' }}>
                                 {statement
-                                    ? <FortuneSheetWrapper data={convertToFortuneSheetData(statement.template_content, 'Reference')} readOnly isMarathi={isMarathi} />
-                                    : <Typography color="text.secondary">No statement template assigned.</Typography>
+                                    ? <FortuneSheetWrapper
+                                        data={convertToFortuneSheetData(statement.template_content, 'Reference')}
+                                        readOnly
+                                        isMarathi={isMarathi}
+                                        height={-1}  // fills parent
+                                      />
+                                    : <Box sx={{ p: 3 }}><Typography color="text.secondary">No statement template assigned.</Typography></Box>
                                 }
-                            </Paper>
+                            </Box>
+                        </Grid>
 
-                            <Typography variant="overline" color="primary" fontWeight={700} sx={{ display: 'block', mb: 1 }}>
-                                ✏️ Your Statement Editor
-                            </Typography>
-                            {statement
-                                ? <FortuneSheetWrapper
-                                    data={[{ name: 'My Statement', celldata: [], status: 1 }]}
-                                    onChange={setStatementGrid}
-                                    readOnly={false}
-                                    isMarathi={isMarathi}
-                                    height={600}
-                                  />
-                                : <Typography color="text.secondary">No statement template assigned.</Typography>
-                            }
+                        {/* Right — Student editor */}
+                        <Grid item xs={12} lg={6} sx={{ display: 'flex', flexDirection: 'column' }}>
+                            <Box sx={{
+                                px: 2, py: 1, bgcolor: '#eff6ff',
+                                borderBottom: '1px solid', borderBottomColor: 'divider',
+                                flexShrink: 0,
+                            }}>
+                                <Typography variant="overline" color="primary" fontWeight={700}>
+                                    ✏️ Your Statement Editor
+                                </Typography>
+                            </Box>
+                            <Box sx={{ flex: 1, overflow: 'hidden' }}>
+                                {statement
+                                    ? <FortuneSheetWrapper
+                                        data={[{ name: 'My Statement', celldata: [], status: 1 }]}
+                                        onChange={setStatementGrid}
+                                        readOnly={false}
+                                        isMarathi={isMarathi}
+                                        height={-1}  // fills parent
+                                      />
+                                    : <Box sx={{ p: 3 }}><Typography color="text.secondary">No statement template assigned.</Typography></Box>
+                                }
+                            </Box>
                         </Grid>
                     </Grid>
                 </Paper>

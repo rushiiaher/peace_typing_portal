@@ -53,7 +53,7 @@ export default function FortuneSheetWrapper({ data, onChange, readOnly = false, 
     };
 
     return (
-        <Box sx={{ width: '100%', height: `${height}px`, border: '1px solid #ccc', borderRadius: 1, overflow: 'hidden' }}>
+        <Box sx={{ width: '100%', height: height === -1 ? '100%' : `${height}px`, border: '1px solid #ccc', borderRadius: 1, overflow: 'hidden' }}>
             <Workbook {...defaultSettings} />
         </Box>
     );
