@@ -11,17 +11,54 @@ import {
 import {
     QuestionAnswer, Email, Description, TableChart, Speed, CheckCircle,
     AccessTime, School, PlayArrow, HowToReg, Block, Fullscreen, Warning,
+    Lock, LockOpen, RadioButtonChecked,
 } from '@mui/icons-material';
 import ExamMCQEmail from '../../../../../components/exam/ExamMCQEmail';
 import ExamLetterStatement from '../../../../../components/exam/ExamLetterStatement';
 import ExamSpeedSection from '../../../../../components/exam/ExamSpeedSection';
 
-const STEPS = [
-    'Instructions',
-    'Section 1 — MCQ & Email',
-    'Section 2 — Letter & Statement',
-    'Section 3 — Speed Passage',
+// ── Step config ───────────────────────────────────────────────────────────────
+const SECTION_LABELS = [
+    'Section 1 – MCQ & Email',
+    'Section 2 – Letter & Statement',
+    'Section 3 – Speed',
 ];
+
+const SECTION_COLORS = ['#3b82f6', '#f59e0b', '#10b981'];
+
+// ── Custom StepIcon for locked/active/done states ─────────────────────────────
+function SectionStepIcon({ step, active, completed, locked }: {
+    step: number; active: boolean; completed: boolean; locked: boolean;
+}) {
+    if (completed) return <CheckCircle sx={{ color: '#16a34a', fontSize: 28 }} />;
+    if (active)    return <RadioButtonChecked sx={{ color: SECTION_COLORS[step - 1], fontSize: 28 }} />;
+    return <Lock sx={{ color: '#94a3b8', fontSize: 24 }} />;
+}
+
+// ── Section Transition Screen ─────────────────────────────────────────────────
+function SectionTransition({ from, to }: { from: number; to: number }) {
+    return (
+        <Box sx={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            minHeight: '60vh', gap: 3,
+        }}>
+            <Paper elevation={4} sx={{
+                p: 6, borderRadius: 4, textAlign: 'center', maxWidth: 460,
+                background: `linear-gradient(135deg, ${SECTION_COLORS[from - 1]}22, ${SECTION_COLORS[to - 1]}22)`,
+                border: `1px solid ${SECTION_COLORS[from - 1]}44`,
+            }}>
+                <CheckCircle sx={{ fontSize: 64, color: '#16a34a', mb: 2 }} />
+                <Typography variant="h5" fontWeight={800} gutterBottom>
+                    Section {from} Submitted
+                </Typography>
+                <Typography color="text.secondary" sx={{ mb: 3 }}>
+                    Your answers have been recorded. Proceeding to Section {to}…
+                </Typography>
+                <CircularProgress size={28} sx={{ color: SECTION_COLORS[to - 1] }} />
+            </Paper>
+        </Box>
+    );
+}
 
 export default function ExamSession() {
     const { id } = useParams<{ id: string }>();
@@ -30,13 +67,15 @@ export default function ExamSession() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [examData, setExamData] = useState<any>(null);
-    const [step, setStep] = useState(0); // 0: Intro, 1-3: sections, 4: done
+    const [step, setStep] = useState(0);           // 0=intro, 1-3=sections, 4=done
+    const [completedSections, setCompletedSections] = useState<Set<number>>(new Set());
+    const [transitioning, setTransitioning] = useState<{ from: number; to: number } | null>(null);
     const [finalResult, setFinalResult] = useState<any>(null);
     const [starting, setStarting] = useState(false);
-    const [fsWarning, setFsWarning] = useState(false);   // fullscreen-exit warning dialog
-    const [fsViolations, setFsViolations] = useState(0); // count of exits
+    const [fsWarning, setFsWarning] = useState(false);
+    const [fsViolations, setFsViolations] = useState(0);
     const examContainerRef = useRef<HTMLDivElement>(null);
-    const examActiveRef = useRef(false); // true while exam is in progress (step 1-3)
+    const examActiveRef = useRef(false);
 
     useEffect(() => {
         async function load() {
@@ -45,10 +84,17 @@ export default function ExamSession() {
                 const j = await res.json();
                 if (!res.ok) throw new Error(j.error || 'Failed to load exam');
                 setExamData(j);
-                if (j.exam.status === 'completed') setStep(4);
-                else if (j.exam.status === 'in_progress') {
+
+                if (j.exam.status === 'completed') {
+                    setStep(4);
+                } else if (j.exam.status === 'in_progress') {
                     examActiveRef.current = true;
-                    setStep(1);
+                    const resume = j.resumeSection ?? 1;
+                    setStep(resume);
+                    // Mark previously completed sections as done
+                    const done = new Set<number>();
+                    for (let s = 1; s < resume; s++) done.add(s);
+                    setCompletedSections(done);
                 }
             } catch (e: any) { setError(e.message); }
             finally { setLoading(false); }
@@ -59,23 +105,22 @@ export default function ExamSession() {
     const enterFullscreen = useCallback(async () => {
         const el = examContainerRef.current ?? document.documentElement;
         try {
-            await (el as any).requestFullscreen?.() ??
+            await ((el as any).requestFullscreen?.() ??
                 (el as any).webkitRequestFullscreen?.() ??
                 (el as any).mozRequestFullScreen?.() ??
-                (el as any).msRequestFullscreen?.();
-        } catch { /* user denied — exam still starts */ }
+                (el as any).msRequestFullscreen?.());
+        } catch { }
     }, []);
 
     const exitFullscreen = useCallback(() => {
         try {
-            (document as any).exitFullscreen?.() ??
+            ((document as any).exitFullscreen?.() ??
                 (document as any).webkitExitFullscreen?.() ??
                 (document as any).mozCancelFullScreen?.() ??
-                (document as any).msExitFullscreen?.();
-        } catch { /* ignore */ }
+                (document as any).msExitFullscreen?.());
+        } catch { }
     }, []);
 
-    // Listen for fullscreen exits while exam is active
     useEffect(() => {
         const onFsChange = () => {
             const isFs = !!(
@@ -98,7 +143,6 @@ export default function ExamSession() {
         };
     }, []);
 
-    // Warn on tab/window blur while exam active
     useEffect(() => {
         const onBlur = () => { if (examActiveRef.current) setFsWarning(true); };
         window.addEventListener('blur', onBlur);
@@ -121,42 +165,52 @@ export default function ExamSession() {
         finally { setStarting(false); }
     };
 
-    const handleSection1Complete = async (data: any) => {
-        try {
-            await fetch(`/api/student/exams/${id}/submit-section`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ section: 1, data })
-            });
-        } catch (e) { console.error('Failed saving section 1', e); }
-        finally { setStep(2); }
-    };
-
-    const handleSection2Complete = async (data: any) => {
-        try {
-            await fetch(`/api/student/exams/${id}/submit-section`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ section: 2, data })
-            });
-        } catch (e) { console.error('Failed saving section 2', e); }
-        finally { setStep(3); }
-    };
-
-    const handleSection3Complete = async (speedStats: any) => {
-        examActiveRef.current = false;
-        exitFullscreen();
+    // ── Section completion: save → show transition → advance ─────────────────
+    const advanceSection = useCallback(async (
+        fromSection: number,
+        apiPayload: object,
+        onFinalResult?: (r: any) => void,
+    ) => {
+        // 1. Save to server
         try {
             const res = await fetch(`/api/student/exams/${id}/submit-section`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ section: 3, data: speedStats })
+                body: JSON.stringify({ section: fromSection, data: apiPayload }),
             });
             const json = await res.json();
-            if (json.answer) setFinalResult(json.answer);
-        } catch (e) { console.error('Failed saving section 3', e); }
-        finally { setStep(4); }
-    };
+            if (onFinalResult && json.answer) onFinalResult(json.answer);
+        } catch (e) { console.error(`Failed saving section ${fromSection}`, e); }
+
+        // 2. Mark completed + show transition
+        setCompletedSections(prev => new Set(prev).add(fromSection));
+        const toSection = fromSection + 1;
+
+        if (fromSection < 3) {
+            setTransitioning({ from: fromSection, to: toSection });
+            setTimeout(() => {
+                setTransitioning(null);
+                setStep(toSection);
+            }, 2000);
+        } else {
+            // Section 3 done = exam finished
+            examActiveRef.current = false;
+            exitFullscreen();
+            setStep(4);
+        }
+    }, [id, exitFullscreen]);
+
+    const handleSection1Complete = useCallback(async (data: any) => {
+        await advanceSection(1, data);
+    }, [advanceSection]);
+
+    const handleSection2Complete = useCallback(async (data: any) => {
+        await advanceSection(2, data);
+    }, [advanceSection]);
+
+    const handleSection3Complete = useCallback(async (speedStats: any) => {
+        await advanceSection(3, speedStats, (answer) => setFinalResult(answer));
+    }, [advanceSection]);
 
     const reEnterFullscreen = async () => {
         setFsWarning(false);
@@ -191,31 +245,23 @@ export default function ExamSession() {
                     borderRadius: 4, overflow: 'hidden',
                     background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5986 100%)',
                 }}>
-                    {/* Header */}
                     <Box sx={{ p: 4, color: 'white', textAlign: 'center' }}>
                         <School sx={{ fontSize: 56, opacity: 0.9, mb: 1 }} />
                         <Typography variant="h4" fontWeight={800}>{course?.name}</Typography>
                         <Typography variant="subtitle1" sx={{ opacity: 0.8, mt: 0.5 }}>
                             {pattern?.pattern_name}
                         </Typography>
-                        <Chip
-                            label={`Exam Date: ${fmtDateLongIST(exam?.exam_date)}`}
-                            sx={{ mt: 2, bgcolor: 'rgba(255,255,255,0.15)', color: 'white', fontWeight: 600 }}
-                        />
+                        <Chip label={`Exam Date: ${fmtDateLongIST(exam?.exam_date)}`}
+                            sx={{ mt: 2, bgcolor: 'rgba(255,255,255,0.15)', color: 'white', fontWeight: 600 }} />
                         {exam?.start_time && (
-                            <Chip
-                                label={`Time: ${fmtTimeIST(exam.start_time)}`}
-                                sx={{ mt: 1, ml: 1, bgcolor: 'rgba(255,255,255,0.12)', color: 'white', fontWeight: 600 }}
-                            />
+                            <Chip label={`Time: ${fmtTimeIST(exam.start_time)}`}
+                                sx={{ mt: 1, ml: 1, bgcolor: 'rgba(255,255,255,0.12)', color: 'white', fontWeight: 600 }} />
                         )}
                     </Box>
 
-                    {/* Exam Plan */}
                     <Box sx={{ bgcolor: 'white', p: 4 }}>
                         <Typography variant="h6" fontWeight={700} gutterBottom>📋 Exam Pattern</Typography>
-
                         <Stack spacing={1.5} sx={{ mb: 4 }}>
-                            {/* Section 1 */}
                             <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2, borderLeft: '4px solid #3b82f6' }}>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <Box>
@@ -228,8 +274,6 @@ export default function ExamSession() {
                                     <Chip icon={<AccessTime fontSize="small" />} label={`${sec1Dur} min`} color="primary" />
                                 </Box>
                             </Paper>
-
-                            {/* Section 2 */}
                             <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2, borderLeft: '4px solid #f59e0b' }}>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <Box>
@@ -242,8 +286,6 @@ export default function ExamSession() {
                                     <Chip icon={<AccessTime fontSize="small" />} label={`${sec2Dur} min`} color="warning" />
                                 </Box>
                             </Paper>
-
-                            {/* Section 3 */}
                             <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2, borderLeft: '4px solid #10b981' }}>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <Box>
@@ -258,23 +300,22 @@ export default function ExamSession() {
                             </Paper>
                         </Stack>
 
-                        {/* Rules */}
                         <Paper sx={{ p: 2.5, bgcolor: '#fef9c3', border: '1px solid #fde047', borderRadius: 2, mb: 3 }}>
                             <Typography variant="subtitle2" fontWeight={700} color="warning.dark" gutterBottom>⚠️ Important Rules</Typography>
                             <Stack component="ul" spacing={0.5} sx={{ m: 0, pl: 2 }}>
                                 {[
                                     'Once you start, the exam cannot be paused.',
                                     'Do NOT refresh or close the browser tab.',
-                                    'Sections proceed sequentially — you cannot go back.',
+                                    'Sections proceed sequentially — you cannot go back to a completed section.',
                                     'Section 3 timer starts only when you type your first character.',
                                     'Paste (Ctrl+V) is disabled in the typing areas.',
+                                    'Submitted sections are locked — answers cannot be modified.',
                                 ].map((rule, i) => (
                                     <Typography component="li" variant="body2" key={i}>{rule}</Typography>
                                 ))}
                             </Stack>
                         </Paper>
 
-                        {/* Attendance Gate */}
                         {exam?.attendance_status === 'present' ? (
                             <Box>
                                 <Alert severity="success" icon={<HowToReg />} sx={{ mb: 2, borderRadius: 2 }}>
@@ -282,7 +323,8 @@ export default function ExamSession() {
                                 </Alert>
                                 <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
                                     <Button variant="outlined" size="large" onClick={() => router.back()}>Go Back</Button>
-                                    <Button variant="contained" size="large" startIcon={starting ? <CircularProgress size={20} color="inherit" /> : <PlayArrow />}
+                                    <Button variant="contained" size="large"
+                                        startIcon={starting ? <CircularProgress size={20} color="inherit" /> : <PlayArrow />}
                                         onClick={startExam} disabled={starting} sx={{ px: 5 }}>
                                         {starting ? 'Starting…' : 'Start Exam'}
                                     </Button>
@@ -291,8 +333,7 @@ export default function ExamSession() {
                         ) : (
                             <Box>
                                 <Alert severity="error" icon={<Block />} sx={{ mb: 2, borderRadius: 2 }}>
-                                    <strong>Attendance not marked.</strong> Your institute must mark you as <em>Present</em> before you can start the exam.
-                                    Please report to the exam hall and contact your invigilator.
+                                    <strong>Attendance not marked.</strong> Your institute must mark you as <em>Present</em> before you can start.
                                 </Alert>
                                 <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
                                     <Button variant="outlined" size="large" onClick={() => router.back()}>Go Back</Button>
@@ -311,18 +352,59 @@ export default function ExamSession() {
     // ── Sections ──────────────────────────────────────────────────────────────
     return (
         <Box ref={examContainerRef} sx={{ maxWidth: '100%', p: { xs: 1, md: 2 } }}>
-            {/* Stepper (hide when done) */}
+            {/* ── Enhanced Section Progress Stepper ── */}
             {step < 4 && (
                 <Paper variant="outlined" sx={{ p: 2, mb: 3, borderRadius: 2 }}>
-                    <Stepper activeStep={step - 1}>
-                        {['Section 1 – MCQ & Email', 'Section 2 – Letter & Statement', 'Section 3 – Speed'].map(label => (
-                            <Step key={label}><StepLabel>{label}</StepLabel></Step>
-                        ))}
+                    <Stepper activeStep={step - 1} alternativeLabel>
+                        {SECTION_LABELS.map((label, idx) => {
+                            const sectionNum = idx + 1;
+                            const done = completedSections.has(sectionNum);
+                            const active = step === sectionNum;
+                            const locked = !done && !active;
+                            return (
+                                <Step key={label} completed={done}>
+                                    <StepLabel
+                                        StepIconComponent={() => (
+                                            <SectionStepIcon
+                                                step={sectionNum}
+                                                active={active}
+                                                completed={done}
+                                                locked={locked}
+                                            />
+                                        )}
+                                        sx={{
+                                            '& .MuiStepLabel-label': {
+                                                color: done ? '#16a34a' : active ? SECTION_COLORS[idx] : '#94a3b8',
+                                                fontWeight: active ? 700 : 400,
+                                            },
+                                        }}
+                                    >
+                                        <Stack alignItems="center" spacing={0.25}>
+                                            <span>{label}</span>
+                                            {done && (
+                                                <Chip label="Submitted" size="small"
+                                                    sx={{ bgcolor: '#dcfce7', color: '#15803d', fontSize: 10, height: 18 }} />
+                                            )}
+                                            {locked && (
+                                                <Chip label="Locked" size="small"
+                                                    sx={{ bgcolor: '#f1f5f9', color: '#94a3b8', fontSize: 10, height: 18 }} />
+                                            )}
+                                        </Stack>
+                                    </StepLabel>
+                                </Step>
+                            );
+                        })}
                     </Stepper>
                 </Paper>
             )}
 
-            {step === 1 && (
+            {/* ── Transition Screen ── */}
+            {transitioning && (
+                <SectionTransition from={transitioning.from} to={transitioning.to} />
+            )}
+
+            {/* ── Active Sections (hidden during transition) ── */}
+            {!transitioning && step === 1 && (
                 <ExamMCQEmail
                     mcqs={content?.mcq}
                     email={content?.email}
@@ -331,7 +413,7 @@ export default function ExamSession() {
                 />
             )}
 
-            {step === 2 && (
+            {!transitioning && step === 2 && (
                 <ExamLetterStatement
                     letter={content?.letter}
                     statement={content?.statement}
@@ -341,7 +423,7 @@ export default function ExamSession() {
                 />
             )}
 
-            {step === 3 && (
+            {!transitioning && step === 3 && (
                 <ExamSpeedSection
                     passage={content?.speed}
                     courseWpm={passWpm}
@@ -349,19 +431,21 @@ export default function ExamSession() {
                 />
             )}
 
+            {/* ── Exam Complete ── */}
             {step === 4 && (
                 <Box sx={{ maxWidth: 600, mx: 'auto', textAlign: 'center', py: 8 }}>
                     <Paper elevation={3} sx={{ p: 6, borderRadius: 4, background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)' }}>
                         <CheckCircle sx={{ fontSize: 80, color: 'success.main', mb: 2 }} />
                         <Typography variant="h4" fontWeight={800} gutterBottom>Exam Submitted!</Typography>
-                        
+
                         {finalResult && (
                             <Paper variant="outlined" sx={{ p: 3, my: 4, bgcolor: 'rgba(255,255,255,0.8)', textAlign: 'left' }}>
                                 <Typography variant="h6" fontWeight={700} gutterBottom align="center">Provisional Result</Typography>
                                 <Stack spacing={2} sx={{ mt: 2 }}>
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <Typography fontWeight={600}>Section 1 (MCQ)</Typography>
-                                        <Chip label={`${finalResult.mcq_marks_obtained || 0}/50`} color={finalResult.mcq_marks_obtained >= 20 ? 'success' : 'error'} />
+                                        <Chip label={`${finalResult.mcq_marks_obtained || 0}/50`}
+                                            color={finalResult.mcq_marks_obtained >= 20 ? 'success' : 'error'} />
                                     </Box>
                                     <Divider />
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -369,13 +453,15 @@ export default function ExamSession() {
                                         <Stack direction="row" spacing={1}>
                                             <Chip label={`${finalResult.speed_wpm || 0} WPM`} variant="outlined" />
                                             <Chip label={`${finalResult.speed_accuracy || 0}% Acc`} variant="outlined" />
-                                            <Chip label={finalResult.speed_passed ? 'Pass' : 'Fail'} color={finalResult.speed_passed ? 'success' : 'error'} />
+                                            <Chip label={finalResult.speed_passed ? 'Pass' : 'Fail'}
+                                                color={finalResult.speed_passed ? 'success' : 'error'} />
                                         </Stack>
                                     </Box>
                                     <Divider />
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: 'primary.50', p: 1, borderRadius: 1 }}>
                                         <Typography fontWeight={700}>Overall Result</Typography>
-                                        <Typography variant="h6" fontWeight={800} color={finalResult.overall_result === 'pass' ? 'success.main' : 'error.main'}>
+                                        <Typography variant="h6" fontWeight={800}
+                                            color={finalResult.overall_result === 'pass' ? 'success.main' : 'error.main'}>
                                             {finalResult.overall_result?.toUpperCase() || 'EVALUATING'}
                                         </Typography>
                                     </Box>
@@ -393,7 +479,7 @@ export default function ExamSession() {
                 </Box>
             )}
 
-            {/* Fullscreen violation counter badge (visible during exam) */}
+            {/* ── Fullscreen violation badge ── */}
             {step >= 1 && step <= 3 && fsViolations > 0 && (
                 <Box sx={{
                     position: 'fixed', bottom: 16, right: 16, zIndex: 9999,
@@ -405,22 +491,19 @@ export default function ExamSession() {
                 </Box>
             )}
 
-            {/* Fullscreen exit warning dialog */}
+            {/* ── Fullscreen exit warning ── */}
             <Dialog open={fsWarning} disableEscapeKeyDown maxWidth="xs" fullWidth>
                 <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'error.main' }}>
                     <Warning color="error" /> Fullscreen Required
                 </DialogTitle>
                 <DialogContent>
-                    <Typography gutterBottom>
-                        You exited fullscreen mode. This exam must be taken in fullscreen.
-                    </Typography>
+                    <Typography gutterBottom>You exited fullscreen mode. This exam must be taken in fullscreen.</Typography>
                     <Typography variant="body2" color="text.secondary">
                         Fullscreen exits are recorded. Violation #{fsViolations} logged.
                     </Typography>
                 </DialogContent>
                 <DialogActions>
-                    <Button variant="contained" color="error" startIcon={<Fullscreen />}
-                        onClick={reEnterFullscreen}>
+                    <Button variant="contained" color="error" startIcon={<Fullscreen />} onClick={reEnterFullscreen}>
                         Return to Fullscreen
                     </Button>
                 </DialogActions>

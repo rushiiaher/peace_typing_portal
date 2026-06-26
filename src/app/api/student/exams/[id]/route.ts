@@ -72,7 +72,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             }
         }
 
-        return NextResponse.json({ exam, content: fullContent });
+        // 4. Fetch exam_answers to determine resume section
+        const { data: examAnswers } = await admin
+            .from('exam_answers')
+            .select('mcq_answers, letter_html, speed_wpm, submitted_at')
+            .eq('exam_id', id)
+            .maybeSingle();
+
+        // Infer which section to resume based on what's already saved
+        let resumeSection = 1;
+        if (examAnswers) {
+            if (examAnswers.speed_wpm != null) resumeSection = 4;        // all done
+            else if (examAnswers.letter_html != null) resumeSection = 3; // section 2 done
+            else if (examAnswers.mcq_answers != null) resumeSection = 2; // section 1 done
+        }
+
+        return NextResponse.json({ exam, content: fullContent, resumeSection });
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
     }
