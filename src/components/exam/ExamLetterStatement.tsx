@@ -331,29 +331,27 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
             {/* ── Statement Writing tab — 50:50 split ── */}
             {activeTab === 'statement' && (
                 <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden' }}>
-                    <Grid container sx={{ height: 'calc(100vh - 180px)', minHeight: 500 }}>
+                    <Grid container>
                         {/* Left — Reference (read-only) */}
                         <Grid item xs={12} lg={6} sx={{
-                            display: 'flex', flexDirection: 'column',
                             borderRight: { lg: '3px solid' }, borderRightColor: { lg: 'divider' },
                             borderBottom: { xs: '3px solid', lg: 'none' }, borderBottomColor: { xs: 'divider' },
                         }}>
                             <Box sx={{
                                 px: 2, py: 1, bgcolor: '#fafafa',
                                 borderBottom: '1px solid', borderBottomColor: 'divider',
-                                flexShrink: 0,
                             }}>
                                 <Typography variant="overline" color="text.secondary" fontWeight={700}>
                                     📊 Reference Table (Read Only)
                                 </Typography>
                             </Box>
-                            <Box sx={{ flex: 1, overflow: 'hidden', userSelect: 'none', pointerEvents: 'none' }}>
+                            <Box sx={{ userSelect: 'none', pointerEvents: 'none' }}>
                                 {statement
                                     ? <FortuneSheetWrapper
                                         data={convertToFortuneSheetData(statement.template_content, 'Reference')}
                                         readOnly
                                         isMarathi={isMarathi}
-                                        height={-1}  // fills parent
+                                        height={-1}
                                       />
                                     : <Box sx={{ p: 3 }}><Typography color="text.secondary">No statement template assigned.</Typography></Box>
                                 }
@@ -361,24 +359,23 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
                         </Grid>
 
                         {/* Right — Student editor */}
-                        <Grid item xs={12} lg={6} sx={{ display: 'flex', flexDirection: 'column' }}>
+                        <Grid item xs={12} lg={6}>
                             <Box sx={{
                                 px: 2, py: 1, bgcolor: '#eff6ff',
                                 borderBottom: '1px solid', borderBottomColor: 'divider',
-                                flexShrink: 0,
                             }}>
                                 <Typography variant="overline" color="primary" fontWeight={700}>
                                     ✏️ Your Statement Editor
                                 </Typography>
                             </Box>
-                            <Box sx={{ flex: 1, overflow: 'hidden' }}>
+                            <Box>
                                 {statement
                                     ? <FortuneSheetWrapper
                                         data={[{ name: 'My Statement', celldata: [], status: 1 }]}
                                         onChange={setStatementGrid}
                                         readOnly={false}
                                         isMarathi={isMarathi}
-                                        height={-1}  // fills parent
+                                        height={-1}
                                       />
                                     : <Box sx={{ p: 3 }}><Typography color="text.secondary">No statement template assigned.</Typography></Box>
                                 }

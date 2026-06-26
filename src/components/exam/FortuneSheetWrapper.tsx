@@ -1,25 +1,40 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import '@fortune-sheet/react/dist/index.css';
 import { Box, Typography } from '@mui/material';
 
-// FortuneSheet relies heavily on window/document. Must disable SSR.
 const Workbook = dynamic(() => import('@fortune-sheet/react').then(mod => mod.Workbook), {
     ssr: false,
     loading: () => <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}><Typography>Loading Excel Editor...</Typography></Box>
 });
 
 interface FortuneSheetWrapperProps {
-    data: any; // FortuneSheet cell data array
+    data: any;
     onChange?: (data: any) => void;
     readOnly?: boolean;
     isMarathi?: boolean;
+    /** Pixel height. Pass -1 to fill remaining viewport (calc(100vh - 260px)). Default 500. */
     height?: number;
 }
 
-export default function FortuneSheetWrapper({ data, onChange, readOnly = false, isMarathi = false, height = 500 }: FortuneSheetWrapperProps) {
-    // Apply Marathi font to all cells when isMarathi
+export default function FortuneSheetWrapper({
+    data, onChange, readOnly = false, isMarathi = false, height = 500,
+}: FortuneSheetWrapperProps) {
+    // For height=-1 we need a real pixel value so FortuneSheet can size its virtual scroll.
+    // We compute it client-side to avoid SSR mismatch.
+    const [viewportHeight, setViewportHeight] = useState(600);
+    useEffect(() => {
+        if (height !== -1) return;
+        const update = () => setViewportHeight(Math.max(400, window.innerHeight - 260));
+        update();
+        window.addEventListener('resize', update);
+        return () => window.removeEventListener('resize', update);
+    }, [height]);
+
+    const resolvedHeight = height === -1 ? viewportHeight : height;
+
     const processedData = isMarathi
         ? (data ?? []).map((sheet: any) => ({
             ...sheet,
@@ -30,7 +45,7 @@ export default function FortuneSheetWrapper({ data, onChange, readOnly = false, 
         }))
         : data;
 
-    const defaultSettings = {
+    const settings = {
         data: processedData,
         lang: 'en',
         showToolbar: !readOnly,
@@ -41,20 +56,20 @@ export default function FortuneSheetWrapper({ data, onChange, readOnly = false, 
         allowEdit: !readOnly,
         enableAddRow: !readOnly,
         enableAddBackTop: false,
-        column: 20,
-        row: 50,
+        column: 26,
+        row: 60,
         hook: {
             updated: (updatedData: any) => {
-                if (onChange && !readOnly) {
-                    onChange(updatedData);
-                }
-            }
-        }
+                if (onChange && !readOnly) onChange(updatedData);
+            },
+        },
     };
 
     return (
-        <Box sx={{ width: '100%', height: height === -1 ? '100%' : `${height}px`, border: '1px solid #ccc', borderRadius: 1, overflow: 'hidden' }}>
-            <Workbook {...defaultSettings} />
+        // overflow: visible so column-resize drag handles are not clipped by this container.
+        // FortuneSheet manages its own internal scroll viewport.
+        <Box sx={{ width: '100%', height: `${resolvedHeight}px`, overflow: 'visible', position: 'relative' }}>
+            <Workbook {...settings} />
         </Box>
     );
 }
