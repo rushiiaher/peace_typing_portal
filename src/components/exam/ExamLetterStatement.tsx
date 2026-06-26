@@ -132,13 +132,16 @@ function LetterEditor({ isMarathi, readOnly, editorRef }: LetterEditorProps) {
                     bgcolor: readOnly ? '#f0fdf4' : 'background.paper',
                     fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : '"Segoe UI", system-ui, sans-serif',
                     fontSize: isMarathi ? 20 : 14,
-                    lineHeight: 2,
+                    lineHeight: 1.4,
                     color: '#1e293b',
                     whiteSpace: 'pre-wrap',
                     tabSize: 4,
                     overflowY: 'auto',
                     cursor: readOnly ? 'default' : 'text',
                     pointerEvents: readOnly ? 'none' : 'auto',
+                    // Zero out margins on block nodes Enter inserts (<div>/<p>) so
+                    // line breaks are tight, not double-spaced
+                    '& p, & div': { m: 0 },
                     '&:empty::before': {
                         content: 'attr(data-placeholder)',
                         color: '#94a3b8',
