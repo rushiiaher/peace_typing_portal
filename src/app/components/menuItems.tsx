@@ -22,6 +22,7 @@ export const instituteAdminMenuItems = [
   { text: 'Fee Collection', icon: <Payment />, href: '/institute/fees' },
   { text: 'Pay to Admin', icon: <AccountBalance />, href: '/institute/payment-to-admin' },
   { text: 'Exams', icon: <Assignment />, href: '/institute/exams' },
+  { text: 'Final Results', icon: <EmojiEvents />, href: '/institute/final-results' },
   { text: 'Reports', icon: <Assessment />, href: '/institute/reports' },
   { text: 'Settings', icon: <Settings />, href: '/institute/settings' },
   { text: 'Support', icon: <SupportAgent />, href: '/institute/support' },
