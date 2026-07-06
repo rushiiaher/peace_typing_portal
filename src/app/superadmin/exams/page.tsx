@@ -7,11 +7,12 @@ import {
   Avatar, Table, TableBody, TableCell, TableHead, TableRow,
   IconButton, Tooltip, Divider, Button, Dialog, DialogTitle,
   DialogContent, DialogActions, TextField, Snackbar,
+  Select, MenuItem, FormControl, InputLabel, ListItemText,
 } from '@mui/material';
 import {
   ExpandMore, Business, School, Event, AccessTime,
   Computer, HowToReg, PersonOff, Schedule, CheckCircle,
-  Refresh, EditCalendar,
+  Refresh, EditCalendar, Edit,
 } from '@mui/icons-material';
 import AdminLayout from '../../components/AdminLayout';
 import { superAdminMenuItems } from '../../components/menuItems';
@@ -72,13 +73,25 @@ export default function ExamManagement() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  // ── Reschedule dialog state ──
+  // ── Reschedule dialog state (bulk — auto system distribution) ──
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [rescheduleIds, setRescheduleIds] = useState<string[]>([]);
   const [newDate, setNewDate] = useState('');
   const [newTime, setNewTime] = useState('');
   const [rescheduleError, setRescheduleError] = useState('');
   const [rescheduleSaving, setRescheduleSaving] = useState(false);
+
+  // ── Manual assign dialog state (single exam: date + time + system) ──
+  interface SysAvail { id: string; system_name: string; available: boolean; busy_until: string | null; is_current: boolean; }
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualExam, setManualExam] = useState<ExamRow | null>(null);
+  const [manualDate, setManualDate] = useState('');
+  const [manualTime, setManualTime] = useState('');
+  const [manualSystemId, setManualSystemId] = useState('');
+  const [manualSystems, setManualSystems] = useState<SysAvail[]>([]);
+  const [manualChecking, setManualChecking] = useState(false);
+  const [manualError, setManualError] = useState('');
+  const [manualSaving, setManualSaving] = useState(false);
 
   const fetchExams = () => {
     setLoading(true); setError('');
@@ -174,6 +187,84 @@ export default function ExamManagement() {
       setRescheduleError(err.message);
     } finally {
       setRescheduleSaving(false);
+    }
+  };
+
+  // ── Manual assign handlers ──
+  const istTimeHHmm = (iso: string | null) => {
+    if (!iso) return '';
+    try {
+      return new Date(iso).toLocaleTimeString('en-GB', {
+        hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata',
+      });
+    } catch { return ''; }
+  };
+
+  const openManual = (exam: ExamRow) => {
+    setManualExam(exam);
+    setManualDate(exam.examDate !== '—' ? exam.examDate : '');
+    setManualTime(istTimeHHmm(exam.startTime));
+    setManualSystemId('');
+    setManualSystems([]);
+    setManualError('');
+    setManualOpen(true);
+  };
+
+  const checkAvailability = async (examId: string, date: string, time: string) => {
+    if (!date || !time) { setManualSystems([]); return; }
+    setManualChecking(true); setManualError('');
+    try {
+      const res = await fetch(`/api/admin/exams/availability?exam_id=${examId}&date=${date}&time=${time}`);
+      const j = await res.json();
+      if (!res.ok || j.error) throw new Error(j.error || 'Availability check failed');
+      setManualSystems(j.systems ?? []);
+      // Preselect current system if it is still available at the new slot
+      const current = (j.systems ?? []).find((s: SysAvail) => s.is_current && s.available);
+      setManualSystemId(prev => prev || (current ? current.id : ''));
+    } catch (err: any) {
+      setManualError(err.message);
+      setManualSystems([]);
+    } finally {
+      setManualChecking(false);
+    }
+  };
+
+  // Re-check availability whenever date/time change inside the open dialog
+  useEffect(() => {
+    if (manualOpen && manualExam && manualDate && manualTime) {
+      setManualSystemId('');
+      const t = setTimeout(() => checkAvailability(manualExam.id, manualDate, manualTime), 350);
+      return () => clearTimeout(t);
+    }
+  }, [manualOpen, manualExam, manualDate, manualTime]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleManualSave = async () => {
+    if (!manualExam) return;
+    if (!manualDate || !manualTime || !manualSystemId) {
+      setManualError('Set date, time and an available system.');
+      return;
+    }
+    setManualSaving(true); setManualError('');
+    try {
+      const res = await fetch('/api/admin/exams', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids: [manualExam.id],
+          newExamDate: manualDate,
+          newStartTime: manualTime,
+          newSystemId: manualSystemId,
+        }),
+      });
+      const j = await res.json();
+      if (!res.ok || j.error) throw new Error(j.error || 'Failed');
+      setSuccessMsg(j.message || 'Exam updated.');
+      setManualOpen(false);
+      fetchExams();
+    } catch (err: any) {
+      setManualError(err.message);
+    } finally {
+      setManualSaving(false);
     }
   };
 
@@ -310,6 +401,7 @@ export default function ExamManagement() {
                                   <TableCell sx={{ fontWeight: 700 }}>Attendance</TableCell>
                                   <TableCell sx={{ fontWeight: 700 }}>MCQ / Speed</TableCell>
                                   <TableCell sx={{ fontWeight: 700 }}>Result</TableCell>
+                                  <TableCell sx={{ fontWeight: 700, width: 56 }}>Edit</TableCell>
                                 </TableRow>
                               </TableHead>
                               <TableBody>
@@ -360,6 +452,18 @@ export default function ExamManagement() {
                                         <Chip size="small" label={e.result.toUpperCase()} color={e.result === 'pass' ? 'success' : 'error'} />
                                       ) : <Typography variant="caption" color="text.disabled">—</Typography>}
                                     </TableCell>
+                                    <TableCell>
+                                      {e.status !== 'completed' && e.status !== 'in_progress' ? (
+                                        <Tooltip title="Set date, time & system manually">
+                                          <IconButton size="small" color="primary"
+                                            onClick={() => openManual(e)}>
+                                            <Edit fontSize="small" />
+                                          </IconButton>
+                                        </Tooltip>
+                                      ) : (
+                                        <Typography variant="caption" color="text.disabled">—</Typography>
+                                      )}
+                                    </TableCell>
                                   </TableRow>
                                 ))}
                               </TableBody>
@@ -388,10 +492,12 @@ export default function ExamManagement() {
           <Stack spacing={2.5}>
             <Alert severity="info" variant="outlined">
               Super Admin override — no minimum lead time. Setting date for <strong>{rescheduleIds.length}</strong> exam(s).
+              Systems are auto-assigned: <strong>one student per system per slot</strong>. If the group exceeds the
+              number of available systems, the rest move to the next slot automatically (with a 20-min system cooldown).
             </Alert>
             <TextField fullWidth type="date" label="New Exam Date *" InputLabelProps={{ shrink: true }}
               value={newDate} onChange={e => setNewDate(e.target.value)} />
-            <TextField fullWidth type="time" label="New Start Time *" InputLabelProps={{ shrink: true }}
+            <TextField fullWidth type="time" label="First Slot Start Time *" InputLabelProps={{ shrink: true }}
               value={newTime} onChange={e => setNewTime(e.target.value)} />
             {rescheduleError && <Alert severity="error">{rescheduleError}</Alert>}
           </Stack>
@@ -400,6 +506,68 @@ export default function ExamManagement() {
           <Button onClick={() => setRescheduleOpen(false)}>Cancel</Button>
           <Button variant="contained" onClick={handleReschedule} disabled={rescheduleSaving}>
             {rescheduleSaving ? <CircularProgress size={20} /> : 'Set Date'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Manual Assign Dialog (single exam: date + time + system, availability-checked) ── */}
+      <Dialog open={manualOpen} onClose={() => setManualOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Computer color="primary" />
+            <span>Set Date, Time &amp; System</span>
+          </Stack>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <Stack spacing={2.5}>
+            {manualExam && (
+              <Alert severity="info" variant="outlined">
+                <strong>{manualExam.student}</strong> ({manualExam.enrollment})<br />
+                Current: {manualExam.examDate} · {manualExam.startTime ? fmtTimeIST(manualExam.startTime) : '—'} · {manualExam.systemName}
+              </Alert>
+            )}
+            <TextField fullWidth type="date" label="Exam Date *" InputLabelProps={{ shrink: true }}
+              value={manualDate} onChange={e => setManualDate(e.target.value)} />
+            <TextField fullWidth type="time" label="Start Time *" InputLabelProps={{ shrink: true }}
+              value={manualTime} onChange={e => setManualTime(e.target.value)} />
+
+            <FormControl fullWidth size="small" disabled={manualChecking || manualSystems.length === 0}>
+              <InputLabel>System *</InputLabel>
+              <Select value={manualSystemId} label="System *"
+                onChange={e => setManualSystemId(e.target.value)}
+                renderValue={(v) => manualSystems.find(s => s.id === v)?.system_name ?? ''}>
+                {manualSystems.map(s => (
+                  <MenuItem key={s.id} value={s.id} disabled={!s.available}>
+                    <ListItemText
+                      primary={`${s.system_name}${s.is_current ? ' (current)' : ''}`}
+                      secondary={s.available
+                        ? '✓ Available'
+                        : `Busy — free after ${s.busy_until ? fmtTimeIST(s.busy_until) : 'the booked slot'} (incl. 20-min cooldown)`}
+                    />
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {manualChecking && (
+              <Stack direction="row" spacing={1} alignItems="center">
+                <CircularProgress size={16} />
+                <Typography variant="caption" color="text.secondary">Checking system availability…</Typography>
+              </Stack>
+            )}
+            {!manualChecking && manualSystems.length > 0 && (
+              <Typography variant="caption" color="text.secondary">
+                {manualSystems.filter(s => s.available).length} of {manualSystems.length} systems free at this slot.
+              </Typography>
+            )}
+            {manualError && <Alert severity="error">{manualError}</Alert>}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setManualOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleManualSave}
+            disabled={manualSaving || manualChecking || !manualSystemId}>
+            {manualSaving ? <CircularProgress size={20} /> : 'Save Assignment'}
           </Button>
         </DialogActions>
       </Dialog>
