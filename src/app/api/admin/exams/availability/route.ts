@@ -52,7 +52,6 @@ export async function GET(req: NextRequest) {
             .from('institute_systems')
             .select('id, system_name')
             .eq('institute_id', instituteId)
-            .eq('is_active', true)
             .order('system_name');
         if (sysErr) throw sysErr;
 

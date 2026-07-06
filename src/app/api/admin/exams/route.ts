@@ -165,11 +165,10 @@ export async function PATCH(req: NextRequest) {
             .from('institute_systems')
             .select('id, system_name')
             .eq('institute_id', instituteId)
-            .eq('is_active', true)
             .order('system_name');
         if (sysErr) throw sysErr;
         if (!systems?.length) {
-            return NextResponse.json({ error: 'No active exam systems found for this institute. Add systems first.' }, { status: 400 });
+            return NextResponse.json({ error: 'No exam systems found for this institute. Add systems first.' }, { status: 400 });
         }
         const systemIds = systems.map((s: any) => s.id);
         const sysNameMap = Object.fromEntries(systems.map((s: any) => [s.id, s.system_name]));
