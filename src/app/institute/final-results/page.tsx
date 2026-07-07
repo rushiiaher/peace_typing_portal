@@ -10,12 +10,11 @@ import {
 } from '@mui/material';
 import {
     EmojiEvents, Download, FilterList, Refresh, CheckCircle,
-    Cancel, People, Search, PercentOutlined, PhotoLibrary,
+    Cancel, People, Search, PercentOutlined,
     CheckBox as CheckBoxIcon,
 } from '@mui/icons-material';
 import AdminLayout from '../../components/AdminLayout';
 import { instituteAdminMenuItems } from '../../components/menuItems';
-import JSZip from 'jszip';
 
 interface Batch { id: string; batch_name: string; batch_code: string; course_id: string; course_name: string; }
 interface ResultRow {
@@ -50,10 +49,6 @@ function gradeColor(grade: string | null) {
     return '#dc2626';
 }
 
-function sanitizeFilename(name: string) {
-    return name.replace(/[^a-zA-Z0-9_\-\.]/g, '_').replace(/_+/g, '_');
-}
-
 function buildCsv(rows: ResultRow[]) {
     const headers = ['Sr.No', 'Student Name', 'Enrollment No', "Mother's Name", 'Course', 'Batch', 'Marks Obtained', 'Total Marks', 'Percentage', 'Grade', 'Result', 'Exam Date', 'Certificate Given'];
     const body = rows.map((r, i) => [
@@ -85,37 +80,6 @@ function downloadCsvFile(rows: ResultRow[], filename = 'final-results') {
     URL.revokeObjectURL(url);
 }
 
-async function downloadPhotosZip(rows: ResultRow[], zipName = 'student-photos') {
-    const zip = new JSZip();
-    const folder = zip.folder('photos')!;
-
-    const results = await Promise.allSettled(
-        rows.map(async (r) => {
-            if (!r.photo_url) return null;
-            const res = await fetch(r.photo_url);
-            if (!res.ok) return null;
-            const blob = await res.blob();
-            const ext = r.photo_url.split('?')[0].split('.').pop() || 'jpg';
-            const roll = r.enrollment_number || r.student_id.slice(0, 8);
-            const name = sanitizeFilename(r.student_name);
-            folder.file(`${roll}_${name}.${ext}`, blob);
-            return roll;
-        })
-    );
-
-    const added = results.filter(r => r.status === 'fulfilled' && r.value).length;
-    if (added === 0) throw new Error('No photos available for selected students');
-
-    const content = await zip.generateAsync({ type: 'blob' });
-    const url = URL.createObjectURL(content);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${zipName}-${new Date().toISOString().slice(0, 10)}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
-    return added;
-}
-
 export default function InstituteFinalResultsPage() {
     const [batches, setBatches] = useState<Batch[]>([]);
     const [selectedCourse, setSelectedCourse] = useState('');
@@ -132,8 +96,6 @@ export default function InstituteFinalResultsPage() {
     const [rowsPerPage, setRowsPerPage] = useState(25);
 
     const [selected, setSelected] = useState<Set<string>>(new Set());
-    const [zipLoading, setZipLoading] = useState(false);
-    const [zipError, setZipError] = useState('');
     const [certUpdating, setCertUpdating] = useState<Set<string>>(new Set());
 
     // Load this institute's batches once (drives Course + Batch filters)
@@ -248,19 +210,6 @@ export default function InstituteFinalResultsPage() {
         }
     };
 
-    const handleDownloadPhotos = async () => {
-        setZipLoading(true);
-        setZipError('');
-        try {
-            const added = await downloadPhotosZip(targetRows, 'student-photos');
-            if (added === 0) setZipError('No photos available for selected students.');
-        } catch (e: any) {
-            setZipError(e.message || 'Failed to create ZIP');
-        } finally {
-            setZipLoading(false);
-        }
-    };
-
     const passed = results.filter(r => r.result === 'pass').length;
     const failed = results.filter(r => r.result === 'fail').length;
     const certGiven = results.filter(r => r.certificate_generated).length;
@@ -370,7 +319,6 @@ export default function InstituteFinalResultsPage() {
             )}
 
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-            {zipError && <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setZipError('')}>{zipError}</Alert>}
 
             {loading && (
                 <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #e2e8f0' }}>
@@ -439,14 +387,6 @@ export default function InstituteFinalResultsPage() {
                                         onClick={() => downloadCsvFile(targetRows, `results-${targetLabel.replace(/\s/g, '-')}`)}
                                         sx={{ fontSize: 11 }}>
                                         CSV ({targetLabel})
-                                    </Button>
-
-                                    <Button size="small" variant="outlined" color="secondary"
-                                        startIcon={<PhotoLibrary />}
-                                        onClick={handleDownloadPhotos}
-                                        disabled={zipLoading}
-                                        sx={{ fontSize: 11 }}>
-                                        {zipLoading ? 'Zipping…' : `Photos ZIP (${targetLabel})`}
                                     </Button>
                                 </Stack>
                             )}
