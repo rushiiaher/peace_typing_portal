@@ -7,6 +7,7 @@ import {
     Save, Undo, Redo, ArrowBack, Replay, CheckCircle,
     Article, GridView, OpenInFull, ZoomIn, Search
 } from '@mui/icons-material';
+import { computeWordStats, getWordStates, WORD_STATE_STYLE } from '@/utils/typingStats';
 
 interface Passage {
     id: string;
@@ -63,16 +64,10 @@ export default function SpeedPracticeSession() {
     }, [id]);
 
     const computeStats = useCallback((typed: string, passageText: string, secsSpent: number) => {
-        let mistakes = 0;
-        const len = Math.min(typed.length, passageText.length);
-        for (let i = 0; i < len; i++) {
-            if (typed[i] !== passageText[i]) mistakes++;
-        }
-        const words = typed.trim().split(/\s+/).filter(Boolean).length;
+        // Word-based scoring — one wrong word = one mistake (no char cascade)
+        const { typedWordCount, mistakes, accuracy } = computeWordStats(typed, passageText, { final: true });
         const mins = secsSpent / 60 || 0.001;
-        const wpm = Math.round(words / mins);
-        const accuracy = typed.length > 0
-            ? Math.round(((typed.length - mistakes) / typed.length) * 100) : 100;
+        const wpm = Math.round(typedWordCount / mins);
         return { wpm, accuracy, mistakes };
     }, []);
 
@@ -179,33 +174,20 @@ export default function SpeedPracticeSession() {
 
     const timeStr = `${pad2(Math.floor(timeLeft / 60))}:${pad2(timeLeft % 60)}`;
     const secsSpent = DURATION - timeLeft;
-    const wordsCount = typedText.trim().split(/\s+/).filter(Boolean).length;
+    const liveStats = computeWordStats(typedText, passage.passage_text);
+    const wordsCount = liveStats.typedWordCount;
     const liveWpm = secsSpent > 0 ? Math.round(wordsCount / (secsSpent / 60)) : 0;
-    const liveMistakes = (() => {
-        let m = 0;
-        for (let i = 0; i < typedText.length; i++) { if (typedText[i] !== passage.passage_text[i]) m++; }
-        return m;
-    })();
-    const liveAcc = typedText.length > 0 ? Math.round(((typedText.length - liveMistakes) / typedText.length) * 100) : 100;
+    const liveMistakes = liveStats.mistakes;
+    const liveAcc = liveStats.accuracy;
 
-    const overlayChars = passage.passage_text.split('').map((char, i) => {
-        if (i >= typedText.length) return { char, state: 'pending' as const };
-        return { char, state: typedText[i] === char ? 'correct' as const : 'wrong' as const };
+    // Word-level overlay chunks: whole words coloured by correctness
+    const wordStates = getWordStates(typedText, passage.passage_text);
+    let wIdx = -1;
+    const overlayChunks = passage.passage_text.split(/(\s+)/).filter(t => t !== '').map(tok => {
+        if (/^\s+$/.test(tok)) return { state: 'pending' as const, text: tok, ws: true };
+        wIdx++;
+        return { state: (wordStates[wIdx] ?? 'pending'), text: tok, ws: false };
     });
-
-    const overlayChunks: { state: 'pending' | 'correct' | 'wrong', text: string }[] = [];
-    if (overlayChars.length > 0) {
-        let current = { state: overlayChars[0].state, text: overlayChars[0].char };
-        for (let i = 1; i < overlayChars.length; i++) {
-            if (overlayChars[i].state === current.state) {
-                current.text += overlayChars[i].char;
-            } else {
-                overlayChunks.push(current);
-                current = { state: overlayChars[i].state, text: overlayChars[i].char };
-            }
-        }
-        overlayChunks.push(current);
-    }
 
     if (sessionState === 'finished') {
         const passed = finalAccuracy >= 90;
@@ -316,9 +298,16 @@ export default function SpeedPracticeSession() {
                 <Box sx={{ flex: 1, overflow: 'auto', p: 4, display: 'flex', justifyContent: 'center' }}>
                     <Box sx={{ bgcolor: 'white', width: 560, minHeight: 794, p: '72px', boxShadow: '0 0 10px rgba(0,0,0,0.1)', position: 'relative' }}>
                         <Box sx={{ position: 'absolute', top: '72px', left: '72px', right: '72px', fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : '"Times New Roman", Times, serif', fontSize: isMarathi ? 22 : 14, lineHeight: 1.9, color: 'transparent', whiteSpace: 'pre-wrap', textAlign: 'justify', pointerEvents: 'none', zIndex: 2 }}>
-                            {overlayChunks.map((chunk, i) => (
-                                <span key={i} style={{ color: chunk.state === 'pending' ? 'transparent' : chunk.state === 'correct' ? '#16a34a' : '#dc2626', backgroundColor: chunk.state === 'wrong' ? '#fee2e2' : 'transparent' }}>{chunk.text}</span>
-                            ))}
+                            {overlayChunks.map((chunk, i) => {
+                                // Typed pane: pending words stay transparent so the (invisible)
+                                // textarea caret area shows nothing until typed
+                                const st = chunk.ws || chunk.state === 'pending'
+                                    ? { color: 'transparent', background: 'transparent' }
+                                    : WORD_STATE_STYLE[chunk.state];
+                                return (
+                                    <span key={i} style={{ color: st.color, backgroundColor: st.background }}>{chunk.text}</span>
+                                );
+                            })}
                             <span style={{ display: 'inline-block', width: 2, height: '1.2em', backgroundColor: '#2563eb', marginLeft: 1, verticalAlign: 'text-bottom', animation: 'blink 1s step-end infinite' }} />
                         </Box>
                         <textarea ref={textareaRef} value={typedText} onChange={isMarathi ? handleChange : () => {}} onKeyDown={handleKeyDown} autoFocus spellCheck={false} onPaste={(e) => e.preventDefault()} onCopy={(e) => e.preventDefault()} onCut={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} style={{ position: 'absolute', top: '72px', left: '72px', width: 'calc(100% - 144px)', minHeight: 'calc(100% - 144px)', fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : '"Times New Roman", Times, serif', fontSize: isMarathi ? 22 : 14, lineHeight: 1.9, color: 'transparent', caretColor: 'transparent', background: 'transparent', border: 'none', outline: 'none', resize: 'none', zIndex: 3, whiteSpace: 'pre-wrap', textAlign: 'justify', overflow: 'hidden' }} />

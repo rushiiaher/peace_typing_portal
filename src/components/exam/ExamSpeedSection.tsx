@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Box, Typography, Button, Paper, Stack, Chip, Grid } from '@mui/material';
 import { Timer, Speed, CheckCircle } from '@mui/icons-material';
+import { computeWordStats, getWordStates, WORD_STATE_STYLE } from '../../utils/typingStats';
 
 export default function ExamSpeedSection({ passage, courseWpm, onComplete }: any) {
     const isMarathi = passage?.course_name?.toLowerCase().includes('marathi') ||
@@ -24,17 +25,12 @@ export default function ExamSpeedSection({ passage, courseWpm, onComplete }: any
     const passageText: string = passage?.passage_text || '';
 
     const computeStats = useCallback(() => {
-        let mistakes = 0;
-        const len = Math.min(typedText.length, passageText.length);
-        for (let i = 0; i < len; i++) {
-            if (typedText[i] !== passageText[i]) mistakes++;
-        }
-        const typedWords = typedText.trim().split(/\s+/).filter(Boolean).length;
+        // Word-based scoring: a wrong/skipped word costs 1 mistake — a single
+        // character slip no longer misaligns the rest of the passage.
+        const { typedWordCount, mistakes, accuracy } = computeWordStats(typedText, passageText, { final: true });
         const timeSpent = initialDuration - timeLeft || 1;
         const mins = timeSpent / 60;
-        const actualWpm = Math.round(typedWords / mins);
-        const accuracy = typedText.length > 0
-            ? Math.round(((typedText.length - mistakes) / typedText.length) * 100) : 100;
+        const actualWpm = Math.round(typedWordCount / mins);
         const passed = actualWpm >= wpm && accuracy >= 80;
         return { wpm: actualWpm, accuracy, mistakes, timeSpent, passed };
     }, [typedText, timeLeft, passageText, initialDuration, wpm]);
@@ -72,23 +68,24 @@ export default function ExamSpeedSection({ passage, courseWpm, onComplete }: any
     const formatTime = (s: number) => `${pad2(Math.floor(s / 60))}:${pad2(s % 60)}`;
 
     const secsUsed = initialDuration - timeLeft;
-    const liveWords = typedText.trim().split(/\s+/).filter(Boolean).length;
-    const liveWpm = secsUsed > 0 ? Math.round(liveWords / (secsUsed / 60)) : 0;
-    let liveMistakes = 0;
-    for (let i = 0; i < typedText.length; i++) { if (typedText[i] !== passageText[i]) liveMistakes++; }
-    const liveAcc = typedText.length > 0 ? Math.round(((typedText.length - liveMistakes) / typedText.length) * 100) : 100;
+    const liveStats = computeWordStats(typedText, passageText);
+    const liveWpm = secsUsed > 0 ? Math.round(liveStats.typedWordCount / (secsUsed / 60)) : 0;
+    const liveMistakes = liveStats.mistakes;
+    const liveAcc = liveStats.accuracy;
 
-    // Build character-level overlay
-    const overlaySpans = passageText.split('').map((char, i) => {
-        let color = '#94a3b8';
-        let bg = 'transparent';
-        if (i < typedText.length) {
-            color = typedText[i] === char ? '#16a34a' : '#dc2626';
-            bg = typedText[i] === char ? 'transparent' : '#fee2e2';
-        } else if (i === typedText.length && status === 'active') {
-            bg = '#dbeafe';
-        }
-        return <span key={i} style={{ color, background: bg, whiteSpace: 'pre-wrap' }}>{char}</span>;
+    // Build word-level overlay: whole words coloured by correctness
+    const wordStates = getWordStates(typedText, passageText);
+    let overlayWordIdx = -1;
+    const overlaySpans = passageText.split(/(\s+)/).map((tok, i) => {
+        if (tok === '') return null;
+        if (/^\s+$/.test(tok)) return <span key={i} style={{ whiteSpace: 'pre-wrap' }}>{tok}</span>;
+        overlayWordIdx++;
+        const st = WORD_STATE_STYLE[wordStates[overlayWordIdx] ?? 'pending'];
+        return (
+            <span key={i} style={{ color: st.color, background: st.background, whiteSpace: 'pre-wrap', borderRadius: 2 }}>
+                {tok}
+            </span>
+        );
     });
 
     const timerCritical = timeLeft < 60 && status === 'active';
