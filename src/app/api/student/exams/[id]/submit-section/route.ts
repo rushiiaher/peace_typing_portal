@@ -89,15 +89,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
         } else if (section === 3) {
             // Speed Passage - Final Submission
-            const { wpm, accuracy, mistakes, timeSpent } = data;
-            
+            const { wpm, accuracy, mistakes, timeSpent } = data ?? {};
+
+            // Guard: refuse to finalise the exam without real speed stats.
+            // (Prevents silently failing students when the payload is malformed.)
+            if (typeof wpm !== 'number' || typeof accuracy !== 'number') {
+                return NextResponse.json({
+                    error: 'Speed section stats missing (wpm/accuracy). Exam NOT finalised — please submit again.'
+                }, { status: 400 });
+            }
+
             // Get course passing criteria
             const { data: examInfo } = await admin
                 .from('exams')
                 .select('courses(passing_criteria_wpm)')
                 .eq('id', id)
                 .single();
-                
+
             const requiredWpm = (examInfo?.courses as any)?.passing_criteria_wpm || 30;
             const speedPassed = wpm >= requiredWpm && accuracy >= 80;
 
@@ -114,24 +122,35 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
             updateData.speed_wpm = wpm;
             updateData.speed_accuracy = accuracy;
-            updateData.speed_mistakes = mistakes;
-            updateData.speed_time_spent = timeSpent;
+            updateData.speed_mistakes = mistakes ?? 0;
+            updateData.speed_time_spent = timeSpent ?? 0;
             updateData.speed_required_wpm = requiredWpm;
             updateData.speed_passed = speedPassed;
-            
+
             updateData.overall_result = overallResult;
-            updateData.total_marks_obtained = mcqMarks; // Overall marks is just MCQ marks for now
+            // NOTE: total_marks_obtained lives on the exams table only —
+            // writing it here crashed the whole update (column doesn't exist
+            // on exam_answers) and silently lost every student's speed data.
             updateData.result_breakdown = {
                 mcqPass: mcqMarks >= 20,
                 speedPass: speedPassed,
-                reasons: []
+                reasons: [] as string[]
             };
             if (mcqMarks < 20) updateData.result_breakdown.reasons.push('MCQ score below 20');
             if (wpm < requiredWpm) updateData.result_breakdown.reasons.push(`WPM below ${requiredWpm}`);
             if (accuracy < 80) updateData.result_breakdown.reasons.push('Accuracy below 80%');
 
-            // Also update the main exams table
-            await admin
+            // Save answers FIRST — only mark the exam completed once the
+            // section data is safely persisted.
+            updateData.updated_at = new Date().toISOString();
+            updateData.submitted_at = new Date().toISOString();
+            const { error: answersErr } = await admin
+                .from('exam_answers')
+                .update(updateData)
+                .eq('id', answerId);
+            if (answersErr) throw answersErr;
+
+            const { error: examErr } = await admin
                 .from('exams')
                 .update({
                     status: 'completed',
@@ -140,12 +159,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                     total_marks_obtained: mcqMarks
                 })
                 .eq('id', id);
+            if (examErr) throw examErr;
+
+            // Answers already written for section 3 — skip the generic update below
+            const { data: finalAnswer3 } = await admin
+                .from('exam_answers')
+                .select('*')
+                .eq('id', answerId)
+                .single();
+            return NextResponse.json({ success: true, answer: finalAnswer3 });
         }
 
         if (Object.keys(updateData).length > 0) {
             updateData.updated_at = new Date().toISOString();
-            if (section === 3) updateData.submitted_at = new Date().toISOString();
-            
+
             const { error: updateError } = await admin
                 .from('exam_answers')
                 .update(updateData)
