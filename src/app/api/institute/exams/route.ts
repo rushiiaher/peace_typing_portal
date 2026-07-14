@@ -214,6 +214,14 @@ export async function PATCH(req: NextRequest) {
         const { id, attendance_status, status, result } = body;
         if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
 
+        if (attendance_status && !['present', 'absent', 'pending'].includes(attendance_status)) {
+            return NextResponse.json({ error: 'Invalid attendance_status' }, { status: 400 });
+        }
+
+        // Ownership guard — exam must belong to one of this institute's batches
+        const attCtx = await getInstituteContext(admin, user.id);
+        if (!attCtx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
         const { data, error } = await admin
             .from('exams')
             .update({
@@ -222,6 +230,7 @@ export async function PATCH(req: NextRequest) {
                 ...(result && { result }),
             })
             .eq('id', id)
+            .in('batch_id', attCtx.batchIds)
             .select()
             .single();
 
