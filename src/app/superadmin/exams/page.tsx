@@ -453,9 +453,11 @@ export default function ExamManagement() {
                                       ) : <Typography variant="caption" color="text.disabled">—</Typography>}
                                     </TableCell>
                                     <TableCell>
-                                      {e.status !== 'completed' && e.status !== 'in_progress' ? (
-                                        <Tooltip title="Set date, time & system manually">
-                                          <IconButton size="small" color="primary"
+                                      {e.status !== 'in_progress' ? (
+                                        <Tooltip title={e.status === 'completed'
+                                          ? 'Reschedule for RETAKE — previous attempt will be reset'
+                                          : 'Set date, time & system manually'}>
+                                          <IconButton size="small" color={e.status === 'completed' ? 'warning' : 'primary'}
                                             onClick={() => openManual(e)}>
                                             <Edit fontSize="small" />
                                           </IconButton>

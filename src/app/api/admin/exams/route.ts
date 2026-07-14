@@ -145,10 +145,17 @@ export async function PATCH(req: NextRequest) {
         // ── Load the exams being moved (need batch → institute, pattern duration)
         const { data: examRows, error: examRowsErr } = await admin
             .from('exams')
-            .select('id, system_id, batch_id, batches ( institute_id ), exam_patterns ( duration_minutes )')
+            .select('id, system_id, batch_id, status, batches ( institute_id ), exam_patterns ( duration_minutes )')
             .in('id', ids);
         if (examRowsErr) throw examRowsErr;
         if (!examRows?.length) return NextResponse.json({ error: 'Exams not found' }, { status: 404 });
+
+        // Rescheduling a completed/in-progress exam = a fresh retake:
+        // reset the attempt (status/result/marks) and wipe the old answers so
+        // the student panel shows it as an upcoming exam again.
+        const resetIds = examRows
+            .filter((e: any) => e.status === 'completed' || e.status === 'in_progress')
+            .map((e: any) => e.id);
 
         const getInst = (e: any) => Array.isArray(e.batches) ? e.batches[0]?.institute_id : e.batches?.institute_id;
         const instituteIds = [...new Set(examRows.map(getInst).filter(Boolean))];
@@ -204,6 +211,7 @@ export async function PATCH(req: NextRequest) {
         };
 
         const applyUpdate = async (examId: string, sysId: string, slotStart: Date, slotEnd: Date) => {
+            const needsReset = resetIds.includes(examId);
             const { error } = await admin
                 .from('exams')
                 .update({
@@ -213,9 +221,26 @@ export async function PATCH(req: NextRequest) {
                     reporting_time: addMin(slotStart, -30).toISOString(),
                     gate_closing_time: addMin(slotStart, -5).toISOString(),
                     system_id: sysId,
+                    ...(needsReset && {
+                        status: 'scheduled',
+                        result: null,
+                        total_marks_obtained: null,
+                        grade: null,
+                        certificate_generated: false,
+                        attendance_status: 'pending',
+                    }),
                 })
                 .eq('id', examId);
             if (error) throw error;
+
+            if (needsReset) {
+                // Wipe the previous attempt's answers for a clean retake
+                const { error: delErr } = await admin
+                    .from('exam_answers')
+                    .delete()
+                    .eq('exam_id', examId);
+                if (delErr) throw delErr;
+            }
         };
 
         const requestedStart = new Date(`${newExamDate}T${newStartTime}:00+05:30`);
@@ -233,9 +258,12 @@ export async function PATCH(req: NextRequest) {
                 }, { status: 409 });
             }
             await applyUpdate(ids[0], newSystemId, requestedStart, slotEnd);
+            const resetNote = resetIds.length > 0
+                ? ' Previous attempt was reset — exam is scheduled again (attendance must be re-marked).'
+                : '';
             return NextResponse.json({
                 success: true,
-                message: `Exam set: ${newExamDate} at ${newStartTime} (IST) on ${sysNameMap[newSystemId]}.`,
+                message: `Exam set: ${newExamDate} at ${newStartTime} (IST) on ${sysNameMap[newSystemId]}.${resetNote}`,
             });
         }
 
@@ -280,9 +308,12 @@ export async function PATCH(req: NextRequest) {
         }
 
         const detail = slotSummary.map(s => `${s.count} at ${s.time}`).join(', ');
+        const resetNote = resetIds.length > 0
+            ? ` ${resetIds.length} previously attempted exam(s) were reset for retake (attendance must be re-marked).`
+            : '';
         return NextResponse.json({
             success: true,
-            message: `Rescheduled ${ids.length} exam(s) on ${newExamDate}: ${detail}. One student per system per slot, ${COOLDOWN_MINUTES}-min cooldown between slots.`,
+            message: `Rescheduled ${ids.length} exam(s) on ${newExamDate}: ${detail}. One student per system per slot, ${COOLDOWN_MINUTES}-min cooldown between slots.${resetNote}`,
         });
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
