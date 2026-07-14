@@ -10,7 +10,7 @@ import { format, parseISO } from 'date-fns';
 import { fmtDateIST, fmtTimeIST } from '../../../../utils/dateIST';
 import {
     Event, AccessTime, School, PlayArrow, CheckCircle,
-    HourglassEmpty, Cancel,
+    HourglassEmpty, Cancel, HowToReg, PersonOff,
 } from '@mui/icons-material';
 
 const statusConfig: Record<string, { label: string; color: any; icon: any }> = {
@@ -115,6 +115,7 @@ function ExamCard({ exam }: { exam: any }) {
     const status = exam.status || 'scheduled';
     const cfg = statusConfig[status] || statusConfig.scheduled;
     const isActionable = status === 'scheduled' || status === 'in_progress';
+    const attendancePresent = exam.attendance_status === 'present';
     const examDateLabel = fmtDateIST(exam.exam_date);
 
     return (
@@ -197,12 +198,37 @@ function ExamCard({ exam }: { exam: any }) {
 
                 <Stack alignItems="flex-end" spacing={1.5}>
                     <Chip icon={cfg.icon} label={cfg.label} color={cfg.color} size="small" />
+
+                    {/* Attendance state for upcoming exams */}
+                    {status === 'scheduled' && (
+                        attendancePresent ? (
+                            <Chip icon={<HowToReg fontSize="small" />} label="Attendance Marked"
+                                color="success" size="small" variant="outlined" />
+                        ) : (
+                            <Chip icon={<PersonOff fontSize="small" />} label="Attendance Pending"
+                                color="warning" size="small" variant="outlined" />
+                        )
+                    )}
+
                     {isActionable ? (
-                        <Link href={`/student/exams/${exam.id}`} style={{ textDecoration: 'none' }}>
-                            <Button variant="contained" size="small" startIcon={<PlayArrow />} sx={{ borderRadius: 2 }}>
-                                {status === 'in_progress' ? 'Resume' : 'Start Exam'}
-                            </Button>
-                        </Link>
+                        status === 'in_progress' || attendancePresent ? (
+                            <Link href={`/student/exams/${exam.id}`} style={{ textDecoration: 'none' }}>
+                                <Button variant="contained" size="small" startIcon={<PlayArrow />} sx={{ borderRadius: 2 }}>
+                                    {status === 'in_progress' ? 'Resume' : 'Start Exam'}
+                                </Button>
+                            </Link>
+                        ) : (
+                            <Box sx={{ textAlign: 'right' }}>
+                                <Button variant="contained" size="small" disabled startIcon={<HourglassEmpty />}
+                                    sx={{ borderRadius: 2 }}>
+                                    Waiting for Attendance
+                                </Button>
+                                <Typography variant="caption" color="text.secondary"
+                                    sx={{ display: 'block', mt: 0.5, maxWidth: 200 }}>
+                                    Report to the exam hall — your invigilator will mark you present.
+                                </Typography>
+                            </Box>
+                        )
                     ) : status === 'completed' ? (
                         <Button variant="outlined" size="small" disabled sx={{ borderRadius: 2 }}>
                             View Result
