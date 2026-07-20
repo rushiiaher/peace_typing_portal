@@ -292,25 +292,22 @@ export default function SpeedPracticeSession() {
                         onContextMenu={(e) => e.preventDefault()}
                         onDragStart={(e) => e.preventDefault()}
                     >
-                        {passage.passage_text}
+                        {/* Reference passage with live word-progress colours:
+                            green=correct, red=wrong, blue=current, dark=pending */}
+                        {overlayChunks.map((chunk, i) => {
+                            if (chunk.ws) return <span key={i}>{chunk.text}</span>;
+                            const st = chunk.state === 'pending'
+                                ? { color: '#334155', background: 'transparent' }
+                                : WORD_STATE_STYLE[chunk.state];
+                            return (
+                                <span key={i} style={{ color: st.color, backgroundColor: st.background, borderRadius: 2 }}>{chunk.text}</span>
+                            );
+                        })}
                     </Box>
                 </Box>
                 <Box sx={{ flex: 1, overflow: 'auto', p: 4, display: 'flex', justifyContent: 'center' }}>
                     <Box sx={{ bgcolor: 'white', width: 560, minHeight: 794, p: '72px', boxShadow: '0 0 10px rgba(0,0,0,0.1)', position: 'relative' }}>
-                        <Box sx={{ position: 'absolute', top: '72px', left: '72px', right: '72px', fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : '"Times New Roman", Times, serif', fontSize: isMarathi ? 22 : 14, lineHeight: 1.9, color: 'transparent', whiteSpace: 'pre-wrap', textAlign: 'justify', pointerEvents: 'none', zIndex: 2 }}>
-                            {overlayChunks.map((chunk, i) => {
-                                // Typed pane: pending words stay transparent so the (invisible)
-                                // textarea caret area shows nothing until typed
-                                const st = chunk.ws || chunk.state === 'pending'
-                                    ? { color: 'transparent', background: 'transparent' }
-                                    : WORD_STATE_STYLE[chunk.state];
-                                return (
-                                    <span key={i} style={{ color: st.color, backgroundColor: st.background }}>{chunk.text}</span>
-                                );
-                            })}
-                            <span style={{ display: 'inline-block', width: 2, height: '1.2em', backgroundColor: '#2563eb', marginLeft: 1, verticalAlign: 'text-bottom', animation: 'blink 1s step-end infinite' }} />
-                        </Box>
-                        <textarea ref={textareaRef} value={typedText} onChange={isMarathi ? handleChange : () => {}} onKeyDown={handleKeyDown} autoFocus spellCheck={false} onPaste={(e) => e.preventDefault()} onCopy={(e) => e.preventDefault()} onCut={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} style={{ position: 'absolute', top: '72px', left: '72px', width: 'calc(100% - 144px)', minHeight: 'calc(100% - 144px)', fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : '"Times New Roman", Times, serif', fontSize: isMarathi ? 22 : 14, lineHeight: 1.9, color: 'transparent', caretColor: 'transparent', background: 'transparent', border: 'none', outline: 'none', resize: 'none', zIndex: 3, whiteSpace: 'pre-wrap', textAlign: 'justify', overflow: 'hidden' }} />
+                        <textarea ref={textareaRef} value={typedText} onChange={isMarathi ? handleChange : () => {}} onKeyDown={handleKeyDown} autoFocus spellCheck={false} onPaste={(e) => e.preventDefault()} onCopy={(e) => e.preventDefault()} onCut={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} style={{ position: 'absolute', top: '72px', left: '72px', width: 'calc(100% - 144px)', minHeight: 'calc(100% - 144px)', fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : '"Times New Roman", Times, serif', fontSize: isMarathi ? 22 : 14, lineHeight: 1.9, color: '#1e293b', caretColor: '#2563eb', background: 'transparent', border: 'none', outline: 'none', resize: 'none', zIndex: 3, whiteSpace: 'pre-wrap', textAlign: 'justify', overflow: 'hidden' }} />
                         {sessionState === 'idle' && typedText.length === 0 && (
                             <Box sx={{ position: 'absolute', inset: 0, zIndex: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(255,255,255,0.9)', cursor: 'text' }} onClick={() => textareaRef.current?.focus()}>
                                 <Typography sx={{ fontWeight: 600, color: '#2b579a', mb: 1 }}>Click to Start Typing</Typography>
