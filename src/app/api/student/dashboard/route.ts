@@ -17,13 +17,32 @@ export async function GET() {
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const admin = getAdmin();
-        // Verify student exists and is active
+        // Verify student exists and is active; grab profile fields for the header
         const { data: studentRow } = await admin
             .from('students')
-            .select('id, is_active')
+            .select('id, is_active, name, photo_url, enrollment_number, institute_id, batch_id')
             .eq('id', user.id)
             .single();
         if (!studentRow || !studentRow.is_active) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+        // Course (via batch) + institute names — flat lookups (no FK ambiguity)
+        const [batchRes, instRes] = await Promise.all([
+            studentRow.batch_id
+                ? admin.from('batches').select('course_id, courses ( name )').eq('id', studentRow.batch_id).single()
+                : Promise.resolve({ data: null }),
+            studentRow.institute_id
+                ? admin.from('institutes').select('name, city').eq('id', studentRow.institute_id).single()
+                : Promise.resolve({ data: null }),
+        ]);
+
+        const profile = {
+            name: studentRow.name ?? '',
+            photo_url: studentRow.photo_url ?? null,
+            enrollment_number: studentRow.enrollment_number ?? '',
+            course_name: (batchRes.data as any)?.courses?.name ?? '—',
+            institute_name: (instRes.data as any)?.name ?? '—',
+            institute_city: (instRes.data as any)?.city ?? '',
+        };
 
         // DB columns: accuracy_percentage, time_spent_seconds, mistakes_count
         // practice_type values: 'keyboard', 'speed', 'letter', 'statement', 'email', 'mcq'
@@ -56,6 +75,7 @@ export async function GET() {
         }));
 
         return NextResponse.json({
+            profile,
             sessions: normalisedSessions,
             stats: { avgWpm, avgAcc, totalSessions: (sessions ?? []).length },
         });

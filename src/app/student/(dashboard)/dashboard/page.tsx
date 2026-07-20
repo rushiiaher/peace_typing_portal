@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react';
 import {
     Box, Typography, Grid, Paper, Stack, CircularProgress,
-    Alert, Divider, Chip
+    Alert, Divider, Chip, Avatar
 } from '@mui/material';
 import {
     Speed, GpsFixed, Assignment, EmojiEvents,
-    History, Keyboard, Description, Article, Email, Quiz
+    History, Keyboard, Description, Article, Email, Quiz,
+    School, Business,
 } from '@mui/icons-material';
 
 interface Session {
@@ -17,6 +18,15 @@ interface Session {
     accuracy: number;
     score_percent: number;
     completed_at: string;
+}
+
+interface Profile {
+    name: string;
+    photo_url: string | null;
+    enrollment_number: string;
+    course_name: string;
+    institute_name: string;
+    institute_city: string;
 }
 
 const TYPE_CONFIG: Record<string, { label: string, icon: any, color: string }> = {
@@ -29,7 +39,7 @@ const TYPE_CONFIG: Record<string, { label: string, icon: any, color: string }> =
 };
 
 export default function StudentDashboard() {
-    const [data, setData] = useState<{ sessions: Session[], stats: any } | null>(null);
+    const [data, setData] = useState<{ profile?: Profile, sessions: Session[], stats: any } | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
@@ -55,10 +65,60 @@ export default function StudentDashboard() {
         { label: 'Completion Rate', value: 'Good', icon: <EmojiEvents sx={{ color: 'white' }} />, color: '#d97706' },
     ];
 
+    const profile = data?.profile;
+    const initials = (profile?.name ?? '')
+        .split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase()).join('') || '?';
+
     return (
         <Box>
-            <Typography variant="h4" fontWeight={800} sx={{ mb: 1 }}>Welcome back!</Typography>
-            <Typography color="text.secondary" sx={{ mb: 4 }}>Track your typing progress and recent exercises.</Typography>
+            {/* ── Profile Header ── */}
+            {profile ? (
+                <Paper elevation={0} sx={{
+                    p: { xs: 2, sm: 3 }, mb: 4, borderRadius: 4,
+                    background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5986 100%)',
+                    color: 'white',
+                    display: 'flex', alignItems: 'center', gap: { xs: 2, sm: 3 },
+                    flexWrap: 'wrap',
+                }}>
+                    <Avatar
+                        src={profile.photo_url ?? undefined}
+                        alt={profile.name}
+                        sx={{
+                            width: { xs: 56, sm: 72 }, height: { xs: 56, sm: 72 },
+                            fontSize: { xs: 20, sm: 26 }, fontWeight: 700,
+                            bgcolor: 'rgba(255,255,255,0.2)', border: '2px solid rgba(255,255,255,0.5)',
+                        }}
+                    >
+                        {initials}
+                    </Avatar>
+                    <Box sx={{ flex: 1, minWidth: 200 }}>
+                        <Typography variant="h5" fontWeight={800} sx={{ lineHeight: 1.2 }}>
+                            {profile.name}
+                        </Typography>
+                        <Stack direction="row" spacing={2} sx={{ mt: 0.75, flexWrap: 'wrap', gap: 0.5 }}>
+                            <Stack direction="row" spacing={0.5} alignItems="center">
+                                <School sx={{ fontSize: 16, opacity: 0.8 }} />
+                                <Typography variant="body2" sx={{ opacity: 0.9 }}>{profile.course_name}</Typography>
+                            </Stack>
+                            <Stack direction="row" spacing={0.5} alignItems="center">
+                                <Business sx={{ fontSize: 16, opacity: 0.8 }} />
+                                <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                                    {profile.institute_name}{profile.institute_city ? `, ${profile.institute_city}` : ''}
+                                </Typography>
+                            </Stack>
+                        </Stack>
+                    </Box>
+                    {profile.enrollment_number && (
+                        <Chip label={profile.enrollment_number}
+                            sx={{ bgcolor: 'rgba(255,255,255,0.15)', color: 'white', fontWeight: 700, fontFamily: 'monospace' }} />
+                    )}
+                </Paper>
+            ) : (
+                <>
+                    <Typography variant="h4" fontWeight={800} sx={{ mb: 1 }}>Welcome back!</Typography>
+                    <Typography color="text.secondary" sx={{ mb: 4 }}>Track your typing progress and recent exercises.</Typography>
+                </>
+            )}
 
             {loading && <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>}
             {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
