@@ -9,11 +9,11 @@ export default function ExamSpeedSection({ passage, courseWpm, onComplete }: any
     const isMarathi = passage?.course_name?.toLowerCase().includes('marathi') ||
         passage?.title?.toLowerCase().includes('marathi');
 
-    // Dynamic timer: use course passing_criteria_wpm if available, else 30 WPM
+    // Required speed still comes from the course (else 30 WPM)
     const wpm = courseWpm || passage?.passing_wpm || 30;
     const words = passage?.passage_text?.trim().split(/\s+/).filter(Boolean).length || 0;
-    // Time = words / WPM * 60 seconds; minimum 60s, maximum 30 min
-    const initialDuration = Math.max(60, Math.min(1800, Math.ceil((words / wpm) * 60)));
+    // Fixed 8-minute allotment for the speed passage
+    const initialDuration = 8 * 60;
 
     const [timeLeft, setTimeLeft] = useState(initialDuration);
     const [status, setStatus] = useState<'idle' | 'active' | 'finished'>('idle');
@@ -127,7 +127,7 @@ export default function ExamSpeedSection({ passage, courseWpm, onComplete }: any
                         display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1,
                         '@keyframes pulse': { '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.5 } }
                     }}>
-                        <Typography variant="caption" sx={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.5 }}>SECTION 3 · DYNAMIC</Typography>
+                        <Typography variant="caption" sx={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.5 }}>SECTION 3 · 8 MIN</Typography>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             <Timer fontSize="small" />
                             <Typography variant="h6" fontFamily="monospace" fontWeight={700}>
@@ -166,7 +166,7 @@ export default function ExamSpeedSection({ passage, courseWpm, onComplete }: any
                                 p: 2.5, bgcolor: '#f8fafc', borderRadius: 2, flex: 1,
                                 border: '1px solid', borderColor: 'divider',
                                 height: 480, overflowY: 'auto',
-                                lineHeight: 2.2, fontSize: isMarathi ? '20px' : '15px',
+                                lineHeight: 2.2, fontSize: isMarathi ? '22px' : '19px',
                                 fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : 'inherit',
                                 userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none',
                                 pointerEvents: 'none',
@@ -208,7 +208,7 @@ export default function ExamSpeedSection({ passage, courseWpm, onComplete }: any
                                 borderColor: status === 'active' ? '#3b82f6' : status === 'finished' ? '#10b981' : '#e2e8f0',
                                 borderRadius: 8,
                                 fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : '"Segoe UI", system-ui, sans-serif',
-                                fontSize: isMarathi ? '20px' : '15px',
+                                fontSize: isMarathi ? '22px' : '19px',
                                 lineHeight: 2.2,
                                 resize: 'none',
                                 outline: 'none',
