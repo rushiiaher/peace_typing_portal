@@ -448,6 +448,15 @@ export default function ExamSession() {
                                     </Box>
                                     <Divider />
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <Typography fontWeight={600}>Section 2 (Letter &amp; Statement)</Typography>
+                                        {(finalResult.letter_html || finalResult.statement_grid) ? (
+                                            <Chip label="Submitted · Pending Evaluation" color="info" variant="outlined" />
+                                        ) : (
+                                            <Chip label="Not Submitted" color="error" variant="outlined" />
+                                        )}
+                                    </Box>
+                                    <Divider />
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <Typography fontWeight={600}>Section 3 (Speed)</Typography>
                                         <Stack direction="row" spacing={1}>
                                             <Chip label={`${finalResult.speed_wpm || 0} WPM`} variant="outlined" />
