@@ -66,14 +66,21 @@ interface LetterEditorProps {
 
 function LetterEditor({ isMarathi, readOnly, editorRef }: LetterEditorProps) {
     const [charCount, setCharCount] = useState(0);
+    const [lineHeight, setLineHeight] = useState(isMarathi ? 1.8 : 1.4);
 
-    const execCmd = useCallback((cmd: string) => {
+    const execCmd = useCallback((cmd: string, value?: string) => {
         editorRef.current?.focus();
         // Emit CSS styles (e.g. text-align) so alignment/formatting persists in
         // the saved HTML rather than as deprecated presentational attributes.
         try { document.execCommand('styleWithCSS', false, 'true'); } catch { /* older browsers */ }
-        document.execCommand(cmd, false, undefined);
+        document.execCommand(cmd, false, value);
     }, [editorRef]);
+
+    // Native <select> styling — no extra imports
+    const selectSx = {
+        height: 30, fontSize: 12, borderRadius: 4, border: '1px solid #cbd5e1',
+        background: '#fff', color: '#334155', padding: '0 4px', cursor: 'pointer',
+    } as React.CSSProperties;
 
     const updateCount = useCallback(
         () => setCharCount(editorRef.current?.innerText?.length ?? 0),
@@ -155,6 +162,46 @@ function LetterEditor({ isMarathi, readOnly, editorRef }: LetterEditorProps) {
                             <FormatIndentIncrease fontSize="small" />
                         </ToggleButton>
                     </ToggleButtonGroup>
+                    <Divider orientation="vertical" flexItem />
+
+                    {/* Font family — hidden for Marathi (Kruti Dev is fixed) */}
+                    {!isMarathi && (
+                        <select title="Font family" style={{ ...selectSx, width: 120 }}
+                            defaultValue=""
+                            onMouseDown={e => e.stopPropagation()}
+                            onChange={e => { execCmd('fontName', e.target.value); e.target.value = ''; }}>
+                            <option value="" disabled>Font</option>
+                            <option value="Segoe UI">Segoe UI</option>
+                            <option value="Times New Roman">Times New Roman</option>
+                            <option value="Arial">Arial</option>
+                            <option value="Calibri">Calibri</option>
+                            <option value="Georgia">Georgia</option>
+                            <option value="Courier New">Courier New</option>
+                        </select>
+                    )}
+
+                    {/* Font size — execCommand 1..7 */}
+                    <select title="Font size" style={{ ...selectSx, width: 84 }}
+                        defaultValue=""
+                        onChange={e => { execCmd('fontSize', e.target.value); e.target.value = ''; }}>
+                        <option value="" disabled>Size</option>
+                        <option value="2">Small</option>
+                        <option value="3">Normal</option>
+                        <option value="4">Large</option>
+                        <option value="5">X-Large</option>
+                        <option value="6">Huge</option>
+                    </select>
+
+                    {/* Line spacing — applied to the whole letter */}
+                    <select title="Line spacing" style={{ ...selectSx, width: 96 }}
+                        value={String(lineHeight)}
+                        onChange={e => setLineHeight(Number(e.target.value))}>
+                        <option value="1.15">Spacing 1.0</option>
+                        <option value="1.4">Spacing 1.15</option>
+                        <option value="1.8">Spacing 1.5</option>
+                        <option value="2.2">Spacing 2.0</option>
+                    </select>
+
                     <Box sx={{ ml: 'auto', pr: 1 }}>
                         <Chip label={`${charCount} chars`} size="small" variant="outlined" />
                     </Box>
@@ -178,7 +225,7 @@ function LetterEditor({ isMarathi, readOnly, editorRef }: LetterEditorProps) {
                     bgcolor: readOnly ? '#f0fdf4' : 'background.paper',
                     fontFamily: isMarathi ? '"Kruti Dev 010", Arial, sans-serif' : '"Segoe UI", system-ui, sans-serif',
                     fontSize: isMarathi ? 20 : 14,
-                    lineHeight: 1.4,
+                    lineHeight,
                     color: '#1e293b',
                     whiteSpace: 'pre-wrap',
                     tabSize: 4,
