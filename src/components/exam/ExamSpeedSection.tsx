@@ -120,17 +120,20 @@ export default function ExamSpeedSection({ passage, courseWpm, onComplete }: any
 
                     {/* Timer */}
                     <Box sx={{
-                        px: 3, py: 1, borderRadius: '999px', border: '2px solid',
+                        px: 2.5, py: 0.75, borderRadius: '999px', border: '2px solid',
                         borderColor: timerCritical ? 'error.main' : status === 'idle' ? 'grey.400' : 'primary.main',
                         color: timerCritical ? 'error.main' : status === 'idle' ? 'text.secondary' : 'primary.main',
                         animation: timerCritical ? 'pulse 1s infinite' : 'none',
-                        display: 'flex', alignItems: 'center', gap: 1,
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1,
                         '@keyframes pulse': { '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.5 } }
                     }}>
-                        <Timer fontSize="small" />
-                        <Typography variant="h6" fontFamily="monospace" fontWeight={700}>
-                            {formatTime(timeLeft)}
-                        </Typography>
+                        <Typography variant="caption" sx={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.5 }}>SECTION 3 · DYNAMIC</Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Timer fontSize="small" />
+                            <Typography variant="h6" fontFamily="monospace" fontWeight={700}>
+                                {formatTime(timeLeft)}
+                            </Typography>
+                        </Box>
                     </Box>
 
                     {status === 'finished' && (

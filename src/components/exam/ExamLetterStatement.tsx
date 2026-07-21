@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
     Box, Typography, Button, Paper, Stack, Grid, Tab, Tabs, Chip,
     Dialog, DialogTitle, DialogContent, DialogActions,
@@ -9,7 +9,9 @@ import {
 import {
     Timer, Description, CheckCircle,
     FormatBold, FormatItalic, FormatUnderlined,
-    FormatAlignLeft, FormatAlignCenter, Lock, LockOpen, EastOutlined,
+    FormatAlignLeft, FormatAlignCenter, FormatAlignRight, FormatAlignJustify,
+    FormatListNumbered, FormatListBulleted, FormatIndentIncrease, FormatIndentDecrease,
+    Undo, Redo, Lock, LockOpen, EastOutlined,
 } from '@mui/icons-material';
 import FortuneSheetWrapper from './FortuneSheetWrapper';
 import { convertToFortuneSheetData } from '../../utils/fortuneSheetAdapter';
@@ -67,6 +69,9 @@ function LetterEditor({ isMarathi, readOnly, editorRef }: LetterEditorProps) {
 
     const execCmd = useCallback((cmd: string) => {
         editorRef.current?.focus();
+        // Emit CSS styles (e.g. text-align) so alignment/formatting persists in
+        // the saved HTML rather than as deprecated presentational attributes.
+        try { document.execCommand('styleWithCSS', false, 'true'); } catch { /* older browsers */ }
         document.execCommand(cmd, false, undefined);
     }, [editorRef]);
 
@@ -92,6 +97,17 @@ function LetterEditor({ isMarathi, readOnly, editorRef }: LetterEditorProps) {
                     mb: 1, p: 0.5, border: '1px solid', borderColor: 'divider',
                     borderRadius: 1, bgcolor: 'grey.50', flexWrap: 'wrap',
                 }}>
+                    {/* Undo / Redo */}
+                    <ToggleButtonGroup size="small">
+                        <ToggleButton value="undo" title="Undo" onMouseDown={e => { e.preventDefault(); execCmd('undo'); }}>
+                            <Undo fontSize="small" />
+                        </ToggleButton>
+                        <ToggleButton value="redo" title="Redo" onMouseDown={e => { e.preventDefault(); execCmd('redo'); }}>
+                            <Redo fontSize="small" />
+                        </ToggleButton>
+                    </ToggleButtonGroup>
+                    <Divider orientation="vertical" flexItem />
+                    {/* Bold / Italic / Underline */}
                     <ToggleButtonGroup size="small">
                         <ToggleButton value="bold" title="Bold" onMouseDown={e => { e.preventDefault(); execCmd('bold'); }}>
                             <FormatBold fontSize="small" />
@@ -104,12 +120,39 @@ function LetterEditor({ isMarathi, readOnly, editorRef }: LetterEditorProps) {
                         </ToggleButton>
                     </ToggleButtonGroup>
                     <Divider orientation="vertical" flexItem />
+                    {/* Alignment: left / center / right / justify */}
                     <ToggleButtonGroup size="small">
-                        <ToggleButton value="left" title="Left" onMouseDown={e => { e.preventDefault(); execCmd('justifyLeft'); }}>
+                        <ToggleButton value="left" title="Align left" onMouseDown={e => { e.preventDefault(); execCmd('justifyLeft'); }}>
                             <FormatAlignLeft fontSize="small" />
                         </ToggleButton>
-                        <ToggleButton value="center" title="Center" onMouseDown={e => { e.preventDefault(); execCmd('justifyCenter'); }}>
+                        <ToggleButton value="center" title="Align center" onMouseDown={e => { e.preventDefault(); execCmd('justifyCenter'); }}>
                             <FormatAlignCenter fontSize="small" />
+                        </ToggleButton>
+                        <ToggleButton value="right" title="Align right" onMouseDown={e => { e.preventDefault(); execCmd('justifyRight'); }}>
+                            <FormatAlignRight fontSize="small" />
+                        </ToggleButton>
+                        <ToggleButton value="justify" title="Justify" onMouseDown={e => { e.preventDefault(); execCmd('justifyFull'); }}>
+                            <FormatAlignJustify fontSize="small" />
+                        </ToggleButton>
+                    </ToggleButtonGroup>
+                    <Divider orientation="vertical" flexItem />
+                    {/* Lists */}
+                    <ToggleButtonGroup size="small">
+                        <ToggleButton value="ol" title="Numbered list" onMouseDown={e => { e.preventDefault(); execCmd('insertOrderedList'); }}>
+                            <FormatListNumbered fontSize="small" />
+                        </ToggleButton>
+                        <ToggleButton value="ul" title="Bullet list" onMouseDown={e => { e.preventDefault(); execCmd('insertUnorderedList'); }}>
+                            <FormatListBulleted fontSize="small" />
+                        </ToggleButton>
+                    </ToggleButtonGroup>
+                    <Divider orientation="vertical" flexItem />
+                    {/* Indent */}
+                    <ToggleButtonGroup size="small">
+                        <ToggleButton value="outdent" title="Decrease indent" onMouseDown={e => { e.preventDefault(); execCmd('outdent'); }}>
+                            <FormatIndentDecrease fontSize="small" />
+                        </ToggleButton>
+                        <ToggleButton value="indent" title="Increase indent" onMouseDown={e => { e.preventDefault(); execCmd('indent'); }}>
+                            <FormatIndentIncrease fontSize="small" />
                         </ToggleButton>
                     </ToggleButtonGroup>
                     <Box sx={{ ml: 'auto', pr: 1 }}>
@@ -175,6 +218,19 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
     const isMarathi = isMarathiProp ??
         (letter?.title?.toLowerCase().includes('marathi') ||
         statement?.title?.toLowerCase().includes('marathi'));
+
+    // Stable identities for the FortuneSheet data props. The countdown timer
+    // re-renders this component every second; without memoization these inline
+    // objects would be new each render, forcing the spreadsheet to re-init and
+    // repaint every tick (the source of the flicker/shake).
+    const referenceData = useMemo(
+        () => (statement ? convertToFortuneSheetData(statement.template_content, 'Reference') : null),
+        [statement]
+    );
+    const editorInitialData = useMemo(
+        () => [{ name: 'My Statement', celldata: [], status: 1 }],
+        []
+    );
 
     const onCompleteRef = useRef(onComplete);
     useEffect(() => { onCompleteRef.current = onComplete; }, [onComplete]);
@@ -267,15 +323,18 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
 
                 <Stack direction="row" spacing={2} alignItems="center">
                     <Box sx={{
-                        px: 3, py: 1, borderRadius: '999px', border: '2px solid',
+                        px: 2.5, py: 0.75, borderRadius: '999px', border: '2px solid',
                         borderColor: timerCritical ? 'error.main' : 'primary.main',
                         color: timerCritical ? 'error.main' : 'primary.main',
-                        display: 'flex', alignItems: 'center', gap: 1,
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1,
                         animation: timerCritical ? 'pulse 1s infinite' : 'none',
                         '@keyframes pulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.5 } },
                     }}>
-                        <Timer fontSize="small" />
-                        <Typography variant="h6" fontFamily="monospace" fontWeight={700}>{formatTime(timeLeft)}</Typography>
+                        <Typography variant="caption" sx={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.5 }}>SECTION 2 · 25 MIN</Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Timer fontSize="small" />
+                            <Typography variant="h6" fontFamily="monospace" fontWeight={700}>{formatTime(timeLeft)}</Typography>
+                        </Box>
                     </Box>
 
                     {/* Show "Submit Letter" CTA when on letter tab and not yet submitted */}
@@ -366,7 +425,7 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
                             <Box sx={{ userSelect: 'none', pointerEvents: 'none' }}>
                                 {statement
                                     ? <FortuneSheetWrapper
-                                        data={convertToFortuneSheetData(statement.template_content, 'Reference')}
+                                        data={referenceData}
                                         readOnly
                                         isMarathi={isMarathi}
                                         height={-1}
@@ -389,7 +448,7 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
                             <Box>
                                 {statement
                                     ? <FortuneSheetWrapper
-                                        data={[{ name: 'My Statement', celldata: [], status: 1 }]}
+                                        data={editorInitialData}
                                         onChange={setStatementGrid}
                                         readOnly={false}
                                         isMarathi={isMarathi}

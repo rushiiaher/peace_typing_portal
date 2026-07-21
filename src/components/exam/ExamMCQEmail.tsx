@@ -5,7 +5,7 @@ import {
     Box, Typography, Button, Paper, Radio, RadioGroup,
     FormControlLabel, FormControl, Stack, Grid, IconButton,
     Dialog, DialogTitle, DialogContent, DialogActions, TextField,
-    Divider, Tooltip,
+    Divider, Tooltip, Badge,
 } from '@mui/material';
 import { Timer, Send, QuestionAnswer, Email, ArrowBack, ArrowForward, CheckCircle, HighlightOff, EastOutlined } from '@mui/icons-material';
 
@@ -117,6 +117,11 @@ export default function ExamMCQEmail({ mcqs, email, duration, onComplete }: any)
     const isMarathi = email?.course_name?.toLowerCase().includes('marathi') || email?.title?.toLowerCase().includes('marathi');
     const isLastQuestion = mcqs && currentMcqIndex === mcqs.length - 1;
     const answeredCount = Object.keys(answers).length;
+    const mcqAllDone = !!mcqs && answeredCount === mcqs.length;
+    const emailStarted = !!(emailValues.body && emailValues.body.trim().length > 0);
+    // Guide the next step: after all MCQs, push Email; after Email, push Submit.
+    const highlightEmail = mcqAllDone && !emailStarted && activeTab === 'mcq';
+    const highlightSubmit = mcqAllDone && emailStarted;
     const timerCritical = timeLeft < 300;
 
     return (
@@ -130,34 +135,51 @@ export default function ExamMCQEmail({ mcqs, email, duration, onComplete }: any)
                 <Stack direction="row" spacing={2}>
                     <Button
                         variant={activeTab === 'mcq' ? 'contained' : 'outlined'}
-                        startIcon={<QuestionAnswer />}
+                        startIcon={mcqAllDone ? <CheckCircle /> : <QuestionAnswer />}
+                        color={mcqAllDone ? 'success' : 'primary'}
                         onClick={() => setActiveTab('mcq')}
                     >
                         MCQs ({answeredCount}/{mcqs?.length ?? 25})
                     </Button>
-                    <Button
-                        variant={activeTab === 'email' ? 'contained' : 'outlined'}
-                        startIcon={<Email />}
-                        onClick={() => setActiveTab('email')}
-                    >
-                        Email Writing
-                    </Button>
+                    <Badge color="warning" variant="dot" invisible={!highlightEmail}
+                        sx={{ '& .MuiBadge-badge': { animation: highlightEmail ? 'pulse 1.2s infinite' : 'none' } }}>
+                        <Button
+                            variant={activeTab === 'email' ? 'contained' : 'outlined'}
+                            startIcon={<Email />}
+                            onClick={() => setActiveTab('email')}
+                            sx={highlightEmail ? {
+                                animation: 'pulse 1.2s infinite',
+                                boxShadow: '0 0 0 3px rgba(245,158,11,0.35)',
+                                '@keyframes pulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.7 } },
+                            } : undefined}
+                        >
+                            {highlightEmail ? '➡ Email Writing' : 'Email Writing'}
+                        </Button>
+                    </Badge>
                 </Stack>
 
                 <Stack direction="row" spacing={2} alignItems="center">
                     <Box sx={{
-                        px: 3, py: 1, borderRadius: '999px', border: '2px solid',
+                        px: 2.5, py: 0.75, borderRadius: '999px', border: '2px solid',
                         borderColor: timerCritical ? 'error.main' : 'primary.main',
                         color: timerCritical ? 'error.main' : 'primary.main',
-                        display: 'flex', alignItems: 'center', gap: 1,
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1,
                         animation: timerCritical ? 'pulse 1s infinite' : 'none',
                         '@keyframes pulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.5 } },
                     }}>
-                        <Timer fontSize="small" />
-                        <Typography variant="h6" fontFamily="monospace" fontWeight={700}>{formatTime(timeLeft)}</Typography>
+                        <Typography variant="caption" sx={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.5 }}>SECTION 1 · 25 MIN</Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Timer fontSize="small" />
+                            <Typography variant="h6" fontFamily="monospace" fontWeight={700}>{formatTime(timeLeft)}</Typography>
+                        </Box>
                     </Box>
                     <Button variant="contained" color="success" startIcon={<CheckCircle />}
-                        onClick={() => setShowSubmitConfirm(true)}>
+                        onClick={() => setShowSubmitConfirm(true)}
+                        sx={highlightSubmit ? {
+                            animation: 'pulse 1.2s infinite',
+                            boxShadow: '0 0 0 3px rgba(22,163,74,0.35)',
+                            '@keyframes pulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.75 } },
+                        } : undefined}>
                         Submit Section 1
                     </Button>
                 </Stack>
