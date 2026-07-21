@@ -76,6 +76,15 @@ export default function ExamSession() {
     const [fsViolations, setFsViolations] = useState(0);
     const examContainerRef = useRef<HTMLDivElement>(null);
     const examActiveRef = useRef(false);
+    // server-clock offset (server_time − client) so scheduling can't be bypassed
+    // by changing the local clock; nowMs ticks so the button auto-enables
+    const serverOffsetRef = useRef(0);
+    const [nowMs, setNowMs] = useState(Date.now());
+
+    useEffect(() => {
+        const t = setInterval(() => setNowMs(Date.now()), 1000);
+        return () => clearInterval(t);
+    }, []);
 
     useEffect(() => {
         async function load() {
@@ -83,6 +92,7 @@ export default function ExamSession() {
                 const res = await fetch(`/api/student/exams/${id}`);
                 const j = await res.json();
                 if (!res.ok) throw new Error(j.error || 'Failed to load exam');
+                if (j.server_time) serverOffsetRef.current = new Date(j.server_time).getTime() - Date.now();
                 setExamData(j);
 
                 if (j.exam.status === 'completed') {
@@ -317,19 +327,33 @@ export default function ExamSession() {
                         </Paper>
 
                         {exam?.attendance_status === 'present' ? (
-                            <Box>
-                                <Alert severity="success" icon={<HowToReg />} sx={{ mb: 2, borderRadius: 2 }}>
-                                    Attendance marked — you are cleared to start.
-                                </Alert>
-                                <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
-                                    <Button variant="outlined" size="large" onClick={() => router.back()}>Go Back</Button>
-                                    <Button variant="contained" size="large"
-                                        startIcon={starting ? <CircularProgress size={20} color="inherit" /> : <PlayArrow />}
-                                        onClick={startExam} disabled={starting} sx={{ px: 5 }}>
-                                        {starting ? 'Starting…' : 'Start Exam'}
-                                    </Button>
-                                </Box>
-                            </Box>
+                            (() => {
+                                const startMs = exam?.start_time ? new Date(exam.start_time).getTime() : 0;
+                                const serverNow = nowMs + serverOffsetRef.current;
+                                const timeReached = !startMs || serverNow >= startMs;
+                                return (
+                                    <Box>
+                                        {timeReached ? (
+                                            <Alert severity="success" icon={<HowToReg />} sx={{ mb: 2, borderRadius: 2 }}>
+                                                Attendance marked — you are cleared to start.
+                                            </Alert>
+                                        ) : (
+                                            <Alert severity="info" icon={<AccessTime />} sx={{ mb: 2, borderRadius: 2 }}>
+                                                Your attendance has been marked. You can start the exam at the scheduled time
+                                                {exam?.start_time ? <> — <strong>{fmtTimeIST(exam.start_time)}</strong> on {fmtDateLongIST(exam.exam_date)}</> : null}.
+                                            </Alert>
+                                        )}
+                                        <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+                                            <Button variant="outlined" size="large" onClick={() => router.back()}>Go Back</Button>
+                                            <Button variant="contained" size="large"
+                                                startIcon={starting ? <CircularProgress size={20} color="inherit" /> : timeReached ? <PlayArrow /> : <AccessTime />}
+                                                onClick={startExam} disabled={starting || !timeReached} sx={{ px: 5 }}>
+                                                {starting ? 'Starting…' : timeReached ? 'Start Exam' : 'Not Started Yet'}
+                                            </Button>
+                                        </Box>
+                                    </Box>
+                                );
+                            })()
                         ) : (
                             <Box>
                                 <Alert severity="error" icon={<Block />} sx={{ mb: 2, borderRadius: 2 }}>

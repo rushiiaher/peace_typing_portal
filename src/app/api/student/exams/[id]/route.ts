@@ -87,7 +87,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             else if (examAnswers.mcq_answers != null) resumeSection = 2; // section 1 done
         }
 
-        return NextResponse.json({ exam, content: fullContent, resumeSection });
+        return NextResponse.json({ exam, content: fullContent, resumeSection, server_time: new Date().toISOString() });
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
     }
@@ -105,11 +105,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
         const admin = getAdmin();
 
-        // Guard: attendance must be marked present before exam can start
+        // Guard: attendance present AND scheduled start time reached (server time)
         if (status === 'in_progress') {
             const { data: currentExam } = await admin
                 .from('exams')
-                .select('attendance_status')
+                .select('attendance_status, start_time')
                 .eq('id', id)
                 .eq('student_id', user.id)
                 .single();
@@ -117,6 +117,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             if (!currentExam || currentExam.attendance_status !== 'present') {
                 return NextResponse.json({
                     error: 'Your attendance has not been marked as Present. Please contact your institute before starting the exam.'
+                }, { status: 403 });
+            }
+
+            // Independent check — attendance does NOT bypass the schedule
+            if (currentExam.start_time && Date.now() < new Date(currentExam.start_time).getTime()) {
+                return NextResponse.json({
+                    error: 'The exam has not started yet. You can begin at the scheduled start time.'
                 }, { status: 403 });
             }
         }
