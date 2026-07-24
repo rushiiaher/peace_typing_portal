@@ -106,7 +106,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 .eq('id', id)
                 .single();
 
-            const requiredWpm = (examInfo?.courses as any)?.passing_criteria_wpm || 30;
+            // Pass floor lowered to 20 WPM (business decision: students were
+            // not reaching the 30 WPM course criteria). The student's actual
+            // typed WPM is still stored below for records.
+            const EXAM_PASS_WPM = 20;
+            const requiredWpm = EXAM_PASS_WPM;
             const speedPassed = wpm >= requiredWpm && accuracy >= 80;
 
             // Fetch current MCQ marks to calculate overall result

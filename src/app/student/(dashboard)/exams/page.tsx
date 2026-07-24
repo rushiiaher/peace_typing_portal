@@ -165,33 +165,15 @@ function ExamCard({ exam }: { exam: any }) {
                         )}
                     </Stack>
 
-                    {/* Result badge for completed */}
+                    {/* Result badge for completed — students see only Pass/Fail */}
                     {status === 'completed' && exam.result && (
                         <Box sx={{ mt: 1.5 }}>
-                            <Stack direction="row" spacing={1} flexWrap="wrap">
-                                <Chip
-                                    label={exam.result.toUpperCase()}
-                                    color={exam.result === 'pass' ? 'success' : 'error'}
-                                    size="small"
-                                    sx={{ fontWeight: 700 }}
-                                />
-                                {exam.exam_answers?.[0] && (
-                                    <>
-                                        <Chip 
-                                            label={`MCQ: ${exam.exam_answers[0].mcq_marks_obtained || 0}/50`} 
-                                            size="small" 
-                                            variant="outlined" 
-                                            color={exam.exam_answers[0].mcq_marks_obtained >= 20 ? 'success' : 'error'}
-                                        />
-                                        <Chip 
-                                            label={`Speed: ${exam.exam_answers[0].speed_wpm || 0} WPM (${exam.exam_answers[0].speed_accuracy || 0}%)`} 
-                                            size="small" 
-                                            variant="outlined"
-                                            color={exam.exam_answers[0].speed_passed ? 'success' : 'error'}
-                                        />
-                                    </>
-                                )}
-                            </Stack>
+                            <Chip
+                                label={exam.result.toUpperCase()}
+                                color={exam.result === 'pass' ? 'success' : 'error'}
+                                size="small"
+                                sx={{ fontWeight: 700 }}
+                            />
                         </Box>
                     )}
                 </Box>

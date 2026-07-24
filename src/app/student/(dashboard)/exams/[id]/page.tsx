@@ -242,7 +242,9 @@ export default function ExamSession() {
     const content = examData?.content;
     const pattern = exam?.exam_patterns;
     const course = exam?.courses;
-    const passWpm = course?.passing_criteria_wpm || 30;
+    // Exam pass floor is 20 WPM (matches submit-section EXAM_PASS_WPM),
+    // regardless of the course's named criteria.
+    const passWpm = 20;
     const isMarathi = course?.language_name?.toLowerCase().includes('marathi') ?? false;
     const sec1Dur = pattern?.section_1_duration || 25;
     const sec2Dur = pattern?.section_2_duration || 25;
@@ -482,12 +484,8 @@ export default function ExamSession() {
                                     <Divider />
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <Typography fontWeight={600}>Section 3 (Speed)</Typography>
-                                        <Stack direction="row" spacing={1}>
-                                            <Chip label={`${finalResult.speed_wpm || 0} WPM`} variant="outlined" />
-                                            <Chip label={`${finalResult.speed_accuracy || 0}% Acc`} variant="outlined" />
-                                            <Chip label={finalResult.speed_passed ? 'Pass' : 'Fail'}
-                                                color={finalResult.speed_passed ? 'success' : 'error'} />
-                                        </Stack>
+                                        <Chip label={finalResult.speed_passed ? 'Pass' : 'Fail'}
+                                            color={finalResult.speed_passed ? 'success' : 'error'} />
                                     </Box>
                                     <Divider />
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: 'primary.50', p: 1, borderRadius: 1 }}>

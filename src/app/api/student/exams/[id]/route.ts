@@ -61,7 +61,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             }
 
             if (table) {
-                const { data: content } = await admin.from(table).select('*').eq('id', ass.content_id).single();
+                const { data: content } = await admin.from(table).select('*').eq('id', ass.content_id).maybeSingle();
                 if (content) {
                     if (ass.question_type === 'mcq') {
                         fullContent.mcq.push(content);
@@ -71,6 +71,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
                 }
             }
         }
+
+        // Fallback for writing sections whose assigned content_id is orphaned
+        // (e.g. statement_templates was empty when exams were scheduled).
+        // Pull an active template for the exam's course, else any active one.
+        async function fallbackTemplate(tableName: string) {
+            let q = admin.from(tableName).select('*').eq('is_active', true);
+            const { data: byCourse } = await q.eq('course_id', exam.course_id).limit(1);
+            if (byCourse && byCourse.length) return byCourse[0];
+            const { data: any1 } = await admin.from(tableName).select('*').eq('is_active', true).limit(1);
+            return any1 && any1.length ? any1[0] : null;
+        }
+        if (!fullContent.statement) fullContent.statement = await fallbackTemplate('statement_templates');
+        if (!fullContent.letter) fullContent.letter = await fallbackTemplate('letter_templates');
+        if (!fullContent.email) fullContent.email = await fallbackTemplate('email_templates');
 
         // 4. Fetch exam_answers to determine resume section
         const { data: examAnswers } = await admin
