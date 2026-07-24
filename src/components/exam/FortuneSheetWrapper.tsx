@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, memo } from 'react';
 import dynamic from 'next/dynamic';
 import '@fortune-sheet/react/dist/index.css';
 import { Box, Typography } from '@mui/material';
@@ -19,7 +19,7 @@ interface FortuneSheetWrapperProps {
     height?: number;
 }
 
-export default function FortuneSheetWrapper({
+function FortuneSheetWrapper({
     data, onChange, readOnly = false, isMarathi = false, height = 500,
 }: FortuneSheetWrapperProps) {
     // For height=-1 we need a real pixel value so FortuneSheet can size its virtual scroll.
@@ -66,10 +66,14 @@ export default function FortuneSheetWrapper({
     };
 
     return (
-        // overflow: visible so column-resize drag handles are not clipped by this container.
-        // FortuneSheet manages its own internal scroll viewport.
+        // overflow: visible so column-resize drag handles are not clipped by this
+        // container. FortuneSheet manages its own internal scroll viewport.
         <Box sx={{ width: '100%', height: `${resolvedHeight}px`, overflow: 'visible', position: 'relative' }}>
             <Workbook {...settings} />
         </Box>
     );
 }
+
+// Memoized: the exam screen's 1s countdown re-renders the parent every second.
+// Without this, the spreadsheet would re-render (and repaint) on every tick.
+export default memo(FortuneSheetWrapper);
