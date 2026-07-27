@@ -3,7 +3,17 @@
 import { useEffect, useState, memo } from 'react';
 import dynamic from 'next/dynamic';
 import '@fortune-sheet/react/dist/index.css';
-import { Box, Typography } from '@mui/material';
+import { Box, Typography, GlobalStyles } from '@mui/material';
+
+// FortuneSheet hardcodes overflow:scroll on its grid scrollbars, so the track
+// is always visible even when nothing overflows (looks broken, eats space).
+// auto = show only on real overflow; scrolling still works when content overflows.
+const fortuneScrollbarFix = (
+    <GlobalStyles styles={{
+        '.luckysheet-scrollbar-x': { overflowX: 'auto !important' },
+        '.luckysheet-scrollbar-y': { overflowY: 'auto !important' },
+    }} />
+);
 
 const Workbook = dynamic(() => import('@fortune-sheet/react').then(mod => mod.Workbook), {
     ssr: false,
@@ -69,6 +79,7 @@ function FortuneSheetWrapper({
         // overflow: visible so column-resize drag handles are not clipped by this
         // container. FortuneSheet manages its own internal scroll viewport.
         <Box sx={{ width: '100%', height: `${resolvedHeight}px`, overflow: 'visible', position: 'relative' }}>
+            {fortuneScrollbarFix}
             <Workbook {...settings} />
         </Box>
     );

@@ -50,6 +50,12 @@ export default function ExamSpeedSection({ passage, courseWpm, onComplete }: any
         return () => { if (timerRef.current) clearInterval(timerRef.current); };
     }, [status]);
 
+    const handleSubmit = () => {
+        if (timerRef.current) clearInterval(timerRef.current);
+        setStatus('finished');
+        onComplete(computeStats());
+    };
+
     const handleTyping = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         if (status === 'finished') return;
         const val = e.target.value;
@@ -136,10 +142,10 @@ export default function ExamSpeedSection({ passage, courseWpm, onComplete }: any
                         </Box>
                     </Box>
 
-                    {status === 'finished' && (
+                    {status !== 'idle' && (
                         <Button variant="contained" color="success" size="large" startIcon={<CheckCircle />}
-                            onClick={() => onComplete(computeStats())}>
-                            Submit Exam
+                            onClick={handleSubmit}>
+                            {status === 'finished' ? 'Submit Exam' : 'Submit Speed Passage'}
                         </Button>
                     )}
                 </Stack>
