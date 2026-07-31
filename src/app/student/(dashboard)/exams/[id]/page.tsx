@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { fmtDateLongIST, fmtTimeIST } from '../../../../../utils/dateIST';
+import { examGate } from '../../../../../utils/examWindow';
 import { useParams, useRouter } from 'next/navigation';
 import {
     Box, Paper, Typography, Button, CircularProgress,
@@ -167,7 +168,11 @@ export default function ExamSession() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: 'in_progress' }),
             });
-            if (!res.ok) throw new Error('Failed to start exam');
+            if (!res.ok) {
+                // Surface the server's reason (expired / not started / attendance)
+                const j = await res.json().catch(() => ({}));
+                throw new Error(j.error || 'Failed to start exam');
+            }
             examActiveRef.current = true;
             await enterFullscreen();
             setStep(1);
@@ -330,27 +335,38 @@ export default function ExamSession() {
 
                         {exam?.attendance_status === 'present' ? (
                             (() => {
-                                const startMs = exam?.start_time ? new Date(exam.start_time).getTime() : 0;
-                                const serverNow = nowMs + serverOffsetRef.current;
-                                const timeReached = !startMs || serverNow >= startMs;
+                                // Gate on the server-corrected clock — changing the
+                                // local clock cannot open a closed exam window.
+                                const gate = examGate(exam ?? {}, nowMs + serverOffsetRef.current);
+                                const canStart = gate === 'ok';
                                 return (
                                     <Box>
-                                        {timeReached ? (
+                                        {gate === 'ok' ? (
                                             <Alert severity="success" icon={<HowToReg />} sx={{ mb: 2, borderRadius: 2 }}>
                                                 Attendance marked — you are cleared to start.
                                             </Alert>
-                                        ) : (
+                                        ) : gate === 'not_started' ? (
                                             <Alert severity="info" icon={<AccessTime />} sx={{ mb: 2, borderRadius: 2 }}>
                                                 Your attendance has been marked. You can start the exam at the scheduled time
                                                 {exam?.start_time ? <> — <strong>{fmtTimeIST(exam.start_time)}</strong> on {fmtDateLongIST(exam.exam_date)}</> : null}.
+                                            </Alert>
+                                        ) : (
+                                            <Alert severity="error" icon={<Block />} sx={{ mb: 2, borderRadius: 2 }}>
+                                                <strong>This exam has expired.</strong> Its scheduled window
+                                                {exam?.exam_date ? <> on {fmtDateLongIST(exam.exam_date)}</> : null} has
+                                                closed. Contact your institute to reschedule.
                                             </Alert>
                                         )}
                                         <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
                                             <Button variant="outlined" size="large" onClick={() => router.back()}>Go Back</Button>
                                             <Button variant="contained" size="large"
-                                                startIcon={starting ? <CircularProgress size={20} color="inherit" /> : timeReached ? <PlayArrow /> : <AccessTime />}
-                                                onClick={startExam} disabled={starting || !timeReached} sx={{ px: 5 }}>
-                                                {starting ? 'Starting…' : timeReached ? 'Start Exam' : 'Not Started Yet'}
+                                                startIcon={starting ? <CircularProgress size={20} color="inherit" />
+                                                    : gate === 'ok' ? <PlayArrow />
+                                                        : gate === 'not_started' ? <AccessTime /> : <Block />}
+                                                onClick={startExam} disabled={starting || !canStart} sx={{ px: 5 }}>
+                                                {starting ? 'Starting…'
+                                                    : gate === 'ok' ? 'Start Exam'
+                                                        : gate === 'not_started' ? 'Not Started Yet' : 'Expired'}
                                             </Button>
                                         </Box>
                                     </Box>

@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { examGate, isExamExpired, EXPIRED_MESSAGE } from '@/utils/examWindow';
 
 function getAdmin() {
     return createAdminClient(
@@ -32,6 +33,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             .single();
 
         if (examError || !exam) return NextResponse.json({ error: 'Exam not found' }, { status: 404 });
+
+        // Direct URL access to a dead exam is blocked here (server clock).
+        if (isExamExpired(exam)) {
+            return NextResponse.json({ error: EXPIRED_MESSAGE }, { status: 403 });
+        }
 
         // 2. Fetch assigned questions for each section
         const { data: assignments, error: assignmentError } = await admin
@@ -119,11 +125,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
         const admin = getAdmin();
 
-        // Guard: attendance present AND scheduled start time reached (server time)
+        // Guard: attendance present AND inside the scheduled window (server time)
         if (status === 'in_progress') {
             const { data: currentExam } = await admin
                 .from('exams')
-                .select('attendance_status, start_time')
+                .select('attendance_status, exam_date, start_time, end_time, status')
                 .eq('id', id)
                 .eq('student_id', user.id)
                 .single();
@@ -135,10 +141,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             }
 
             // Independent check — attendance does NOT bypass the schedule
-            if (currentExam.start_time && Date.now() < new Date(currentExam.start_time).getTime()) {
+            const gate = examGate(currentExam);
+            if (gate === 'not_started') {
                 return NextResponse.json({
                     error: 'The exam has not started yet. You can begin at the scheduled start time.'
                 }, { status: 403 });
+            }
+            if (gate === 'expired') {
+                return NextResponse.json({ error: EXPIRED_MESSAGE }, { status: 403 });
             }
         }
 

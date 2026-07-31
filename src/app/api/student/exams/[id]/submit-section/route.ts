@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { isExamExpired, EXPIRED_MESSAGE } from '@/utils/examWindow';
 
 function getAdmin() {
     return createAdminClient(
@@ -21,6 +22,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const admin = getAdmin();
+
+        // Guard: the exam must belong to this student and still be within its
+        // scheduled day. Without this, submitting bypassed every start check.
+        const { data: examRow } = await admin
+            .from('exams')
+            .select('id, exam_date, start_time, end_time, status')
+            .eq('id', id)
+            .eq('student_id', user.id)
+            .single();
+
+        if (!examRow) return NextResponse.json({ error: 'Exam not found' }, { status: 404 });
+        if (isExamExpired(examRow)) {
+            return NextResponse.json({ error: EXPIRED_MESSAGE }, { status: 403 });
+        }
 
         // Ensure the exam_answers row exists
         const { data: existingAnswer, error: checkError } = await admin

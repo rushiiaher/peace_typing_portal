@@ -10,7 +10,7 @@ import { format, parseISO } from 'date-fns';
 import { fmtDateIST, fmtTimeIST } from '../../../../utils/dateIST';
 import {
     Event, AccessTime, School, PlayArrow, CheckCircle,
-    HourglassEmpty, Cancel, HowToReg, PersonOff,
+    HourglassEmpty, Cancel, HowToReg, PersonOff, EventBusy,
 } from '@mui/icons-material';
 
 const statusConfig: Record<string, { label: string; color: any; icon: any }> = {
@@ -18,6 +18,7 @@ const statusConfig: Record<string, { label: string; color: any; icon: any }> = {
     in_progress: { label: 'In Progress', color: 'warning', icon: <PlayArrow fontSize="small" /> },
     completed: { label: 'Completed', color: 'success', icon: <CheckCircle fontSize="small" /> },
     cancelled: { label: 'Cancelled', color: 'error', icon: <Cancel fontSize="small" /> },
+    expired: { label: 'Expired', color: 'default', icon: <EventBusy fontSize="small" /> },
 };
 
 export default function ExamList() {
@@ -42,8 +43,10 @@ export default function ExamList() {
         </Box>
     );
 
-    const upcoming = exams.filter(e => e.status === 'scheduled' || e.status === 'in_progress');
-    const past = exams.filter(e => e.status === 'completed' || e.status === 'cancelled');
+    // `expired` is server-computed (see /api/student/exams) — an exam whose day
+    // has passed drops out of Upcoming and into history.
+    const upcoming = exams.filter(e => !e.expired && (e.status === 'scheduled' || e.status === 'in_progress'));
+    const past = exams.filter(e => e.expired || e.status === 'completed' || e.status === 'cancelled');
 
     return (
         <Box sx={{ maxWidth: 860, mx: 'auto', px: 3, py: 4 }}>
@@ -88,7 +91,7 @@ export default function ExamList() {
             {/* Past */}
             {past.length > 0 && (
                 <Box>
-                    <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>📁 Past Exams</Typography>
+                    <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>📁 Exam History</Typography>
                     <Stack spacing={2}>
                         {past.map(exam => (
                             <ExamCard key={exam.id} exam={exam} />
@@ -112,7 +115,7 @@ export default function ExamList() {
 }
 
 function ExamCard({ exam }: { exam: any }) {
-    const status = exam.status || 'scheduled';
+    const status = exam.expired ? 'expired' : (exam.status || 'scheduled');
     const cfg = statusConfig[status] || statusConfig.scheduled;
     const isActionable = status === 'scheduled' || status === 'in_progress';
     const attendancePresent = exam.attendance_status === 'present';
@@ -124,7 +127,8 @@ function ExamCard({ exam }: { exam: any }) {
             borderLeft: '4px solid',
             borderLeftColor: cfg.color === 'primary' ? 'primary.main'
                 : cfg.color === 'warning' ? 'warning.main'
-                    : cfg.color === 'success' ? 'success.main' : 'error.main',
+                    : cfg.color === 'success' ? 'success.main'
+                        : cfg.color === 'default' ? 'grey.400' : 'error.main',
             transition: 'box-shadow 0.2s',
             '&:hover': { boxShadow: '0 4px 16px rgba(0,0,0,0.08)' },
         }}>
@@ -215,6 +219,17 @@ function ExamCard({ exam }: { exam: any }) {
                         <Button variant="outlined" size="small" disabled sx={{ borderRadius: 2 }}>
                             View Result
                         </Button>
+                    ) : status === 'expired' ? (
+                        <Box sx={{ textAlign: 'right' }}>
+                            <Button variant="outlined" size="small" disabled startIcon={<EventBusy />}
+                                sx={{ borderRadius: 2 }}>
+                                Expired
+                            </Button>
+                            <Typography variant="caption" color="text.secondary"
+                                sx={{ display: 'block', mt: 0.5, maxWidth: 200 }}>
+                                This exam has expired. Contact your institute to reschedule.
+                            </Typography>
+                        </Box>
                     ) : null}
                 </Stack>
             </Box>

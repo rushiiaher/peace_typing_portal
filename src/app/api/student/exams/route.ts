@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { isExamExpired } from '@/utils/examWindow';
 
 function getAdmin() {
     return createAdminClient(
@@ -37,7 +38,11 @@ export async function GET() {
 
         if (error) throw error;
 
-        return NextResponse.json({ exams });
+        // `expired` is computed on the SERVER clock — the client only renders it.
+        const now = Date.now();
+        const withExpiry = (exams ?? []).map((e: any) => ({ ...e, expired: isExamExpired(e, now) }));
+
+        return NextResponse.json({ exams: withExpiry });
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
     }
