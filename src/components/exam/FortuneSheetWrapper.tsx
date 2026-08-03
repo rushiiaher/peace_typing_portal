@@ -5,13 +5,17 @@ import dynamic from 'next/dynamic';
 import '@fortune-sheet/react/dist/index.css';
 import { Box, Typography, GlobalStyles } from '@mui/material';
 
-// FortuneSheet hardcodes overflow:scroll on its grid scrollbars, so the track
-// is always visible even when nothing overflows (looks broken, eats space).
-// auto = show only on real overflow; scrolling still works when content overflows.
+// FortuneSheet's scroll viewport is always as tall/wide as the whole sheet grid
+// (rows x columns), never as tall as the content, so overflow is permanent and
+// `overflow: auto` cannot help — the track sits on the edge of every pane.
+// Hide the track chrome instead. The div stays scrollable (FortuneSheet drives it
+// by setting scrollTop/scrollLeft from wheel + keyboard), so nothing is lost.
 const fortuneScrollbarFix = (
     <GlobalStyles styles={{
-        '.luckysheet-scrollbar-x': { overflowX: 'auto !important' },
-        '.luckysheet-scrollbar-y': { overflowY: 'auto !important' },
+        '.luckysheet-scrollbar-x, .luckysheet-scrollbar-y': { scrollbarWidth: 'none' },
+        '.luckysheet-scrollbar-x::-webkit-scrollbar, .luckysheet-scrollbar-y::-webkit-scrollbar': {
+            display: 'none',
+        },
     }} />
 );
 
