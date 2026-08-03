@@ -17,7 +17,6 @@ export async function GET() {
         const { data, error } = await admin
             .from('institutes')
             .select('id, name, code, city, state, phone, email, is_active')
-            .eq('is_active', true)
             .order('name');
 
         if (error) throw error;
