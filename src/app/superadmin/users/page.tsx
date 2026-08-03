@@ -3,13 +3,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Typography, Tabs, Tab, Box, Button, Dialog, DialogTitle,
-  DialogContent, DialogActions, TextField, InputAdornment,
+  DialogContent, DialogActions, TextField, MenuItem, InputAdornment,
   IconButton, Chip, Alert, Snackbar, Paper, Divider, Tooltip,
-  CircularProgress, Skeleton, Stack, Autocomplete,
+  CircularProgress, Skeleton, Stack,
 } from '@mui/material';
 import { DataGrid, GridColDef, GridActionsCellItem, GridRowParams } from '@mui/x-data-grid';
 import {
-  PersonAdd, Search, AdminPanelSettings, Person,
+  PersonAdd, Search, AdminPanelSettings, Business, Person,
   Refresh, Visibility, VisibilityOff, DeleteOutline, EditOutlined,
 } from '@mui/icons-material';
 import AdminLayout from '../../components/AdminLayout';
@@ -361,18 +361,14 @@ export default function UserManagement() {
             <TextField label="Phone Number" fullWidth size="small" placeholder="Optional"
               value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
 
-            <Autocomplete
-              options={institutes}
-              getOptionLabel={o => o.name}
-              value={institutes.find(i => i.id === form.institute_id) ?? null}
-              onChange={(_, v) => setForm({ ...form, institute_id: v?.id ?? '' })}
-              isOptionEqualToValue={(o, v) => o.id === v.id}
-              renderInput={params => (
-                <TextField {...params} label="Institute *" size="small"
-                  error={!!formErrors.institute_id}
-                  helperText={formErrors.institute_id ?? 'Type to search. This admin will manage the selected institute'} />
-              )}
-            />
+            <TextField select label="Institute *" fullWidth size="small"
+              value={form.institute_id} onChange={e => setForm({ ...form, institute_id: e.target.value })}
+              error={!!formErrors.institute_id} helperText={formErrors.institute_id ?? 'This admin will manage the selected institute'}
+              InputProps={{ startAdornment: <InputAdornment position="start"><Business fontSize="small" /></InputAdornment> }}
+            >
+              <MenuItem value=""><em>Select an institute</em></MenuItem>
+              {institutes.map(inst => <MenuItem key={inst.id} value={inst.id}>{inst.name}</MenuItem>)}
+            </TextField>
 
             {form.full_name && form.email && form.institute_id && (
               <Alert severity="info" icon={<AdminPanelSettings />}>
@@ -424,14 +420,15 @@ export default function UserManagement() {
               onChange={e => setEditForm({ ...editForm, phone: e.target.value })}
             />
 
-            <Autocomplete
-              options={institutes}
-              getOptionLabel={o => o.name}
-              value={institutes.find(i => i.id === editForm.institute_id) ?? null}
-              onChange={(_, v) => setEditForm({ ...editForm, institute_id: v?.id ?? '' })}
-              isOptionEqualToValue={(o, v) => o.id === v.id}
-              renderInput={params => <TextField {...params} label="Institute" size="small" helperText="Type to search" />}
-            />
+            <TextField
+              select label="Institute" fullWidth size="small"
+              value={editForm.institute_id}
+              onChange={e => setEditForm({ ...editForm, institute_id: e.target.value })}
+              InputProps={{ startAdornment: <InputAdornment position="start"><Business fontSize="small" /></InputAdornment> }}
+            >
+              <MenuItem value=""><em>Select an institute</em></MenuItem>
+              {institutes.map(inst => <MenuItem key={inst.id} value={inst.id}>{inst.name}</MenuItem>)}
+            </TextField>
 
             <Divider><Chip label="Password Reset (optional)" size="small" /></Divider>
 

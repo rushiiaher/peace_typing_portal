@@ -16,7 +16,7 @@ import AdminLayout from '../../components/AdminLayout';
 import { superAdminMenuItems } from '../../components/menuItems';
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
-interface Institute { id: string; name: string; code: string; city: string; is_active: boolean; }
+interface Institute { id: string; name: string; code: string; city: string; }
 interface Course { id: string; name: string; code: string; base_course_fee: number; exam_fee: number; }
 interface Allocation {
     id: string;
@@ -140,21 +140,17 @@ export default function CourseAllocationPage() {
     /* ─── Helpers ── */
     const filtered = allocations.filter(a => {
         const matchInst = !filterInstitute || a.institute_id === filterInstitute.id;
-        const matchSearch = !search || [a.institute_name, a.course_name, a.course_code, a.institute_code, a.institute_city]
+        const matchSearch = !search || [a.institute_name, a.course_name, a.course_code, a.institute_code]
             .join(' ').toLowerCase().includes(search.toLowerCase());
         return matchInst && matchSearch;
     });
-
-    /* An institute with zero allocations must still match a name/code/city search */
-    const instituteMatchesSearch = (i: Institute) =>
-        !search || [i.name, i.code, i.city].join(' ').toLowerCase().includes(search.toLowerCase());
 
     const byInstitute = institutes.map(inst => ({
         institute: inst,
         allocs: filtered.filter(a => a.institute_id === inst.id),
     })).filter(g => {
         if (filterInstitute) return g.institute.id === filterInstitute.id;
-        return g.allocs.length > 0 || instituteMatchesSearch(g.institute);
+        return g.allocs.length > 0 || !search;
     });
 
     const unassignedCourses = (instId: string) => {
@@ -285,8 +281,6 @@ export default function CourseAllocationPage() {
                                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                                 <Typography fontWeight={600}>{institute.name}</Typography>
                                                 <Chip label={institute.code} size="small" variant="outlined" color="primary" />
-                                                {!institute.is_active &&
-                                                    <Chip label="Inactive" size="small" variant="outlined" color="default" />}
                                                 {institute.city &&
                                                     <Typography variant="body2" color="text.secondary">· {institute.city}</Typography>}
                                             </Box>
