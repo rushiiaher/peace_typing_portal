@@ -7,12 +7,12 @@ import {
   Avatar, Table, TableBody, TableCell, TableHead, TableRow,
   IconButton, Tooltip, Divider, Button, Dialog, DialogTitle,
   DialogContent, DialogActions, TextField, Snackbar,
-  Select, MenuItem, FormControl, InputLabel, ListItemText,
+  Select, MenuItem, FormControl, InputLabel, ListItemText, InputAdornment,
 } from '@mui/material';
 import {
   ExpandMore, Business, School, Event, AccessTime,
   Computer, HowToReg, PersonOff, Schedule, CheckCircle,
-  Refresh, EditCalendar, Edit,
+  Refresh, EditCalendar, Edit, Search, Clear,
 } from '@mui/icons-material';
 import AdminLayout from '../../components/AdminLayout';
 import { superAdminMenuItems } from '../../components/menuItems';
@@ -73,6 +73,10 @@ export default function ExamManagement() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
+  // ── Filters ──
+  const [search, setSearch] = useState('');
+  const [instituteFilter, setInstituteFilter] = useState('all');
+
   // ── Reschedule dialog state (bulk — auto system distribution) ──
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [rescheduleIds, setRescheduleIds] = useState<string[]>([]);
@@ -107,7 +111,33 @@ export default function ExamManagement() {
 
   useEffect(() => { fetchExams(); }, []);
 
-  const visibleExams = tab === 0 ? exams : exams.filter(e => e.examDate === todayIST());
+  // Institute options (id → label) built from the loaded exams
+  const instituteOptions = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const e of exams) {
+      const id = e.instituteId || 'unknown';
+      if (!m.has(id)) m.set(id, e.instituteCode ? `${e.institute} (${e.instituteCode})` : e.institute);
+    }
+    return Array.from(m, ([id, label]) => ({ id, label })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [exams]);
+
+  const visibleExams = useMemo(() => {
+    let list = tab === 0 ? exams : exams.filter(e => e.examDate === todayIST());
+
+    if (instituteFilter !== 'all') {
+      list = list.filter(e => (e.instituteId || 'unknown') === instituteFilter);
+    }
+
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter(e =>
+        [e.student, e.enrollment, e.institute, e.instituteCode, e.course, e.courseCode,
+         e.batch, e.batchCode, e.systemName, e.centerCode, e.status, e.attendance]
+          .some(v => (v ?? '').toString().toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [exams, tab, instituteFilter, search]);
 
   // Build hierarchy: Institute → Batch → Slot
   const hierarchy = useMemo<InstituteGroup[]>(() => {
@@ -280,7 +310,7 @@ export default function ExamManagement() {
         <Stack direction="row" spacing={1} alignItems="center">
           {!loading && (
             <Typography variant="body2" color="text.secondary">
-              {exams.length} total · {todayExams.length} today
+              {visibleExams.length} shown · {exams.length} total · {todayExams.length} today
             </Typography>
           )}
           <Tooltip title="Refresh"><IconButton onClick={fetchExams}><Refresh /></IconButton></Tooltip>
@@ -294,11 +324,52 @@ export default function ExamManagement() {
         <Tab label={`Today's Exams (${todayExams.length})`} />
       </Tabs>
 
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
+        <TextField
+          size="small"
+          placeholder="Search student, enrollment, batch, course, system…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          sx={{ flex: 1, minWidth: 260 }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start"><Search fontSize="small" /></InputAdornment>
+            ),
+            endAdornment: search ? (
+              <InputAdornment position="end">
+                <IconButton size="small" onClick={() => setSearch('')}><Clear fontSize="small" /></IconButton>
+              </InputAdornment>
+            ) : null,
+          }}
+        />
+        <FormControl size="small" sx={{ minWidth: 260 }}>
+          <InputLabel id="inst-filter-label">Institute</InputLabel>
+          <Select
+            labelId="inst-filter-label"
+            label="Institute"
+            value={instituteFilter}
+            onChange={e => setInstituteFilter(e.target.value)}
+          >
+            <MenuItem value="all">All Institutes ({instituteOptions.length})</MenuItem>
+            {instituteOptions.map(o => (
+              <MenuItem key={o.id} value={o.id}>{o.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        {(search || instituteFilter !== 'all') && (
+          <Button size="small" onClick={() => { setSearch(''); setInstituteFilter('all'); }}>
+            Clear filters
+          </Button>
+        )}
+      </Stack>
+
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>
       ) : hierarchy.length === 0 ? (
         <Paper variant="outlined" sx={{ p: 6, textAlign: 'center', borderRadius: 2 }}>
-          <Typography color="text.secondary">No exams found.</Typography>
+          <Typography color="text.secondary">
+            {search || instituteFilter !== 'all' ? 'No exams match the current filters.' : 'No exams found.'}
+          </Typography>
         </Paper>
       ) : (
         <Stack spacing={1.5}>
