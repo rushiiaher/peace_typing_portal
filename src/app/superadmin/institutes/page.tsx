@@ -177,7 +177,13 @@ export default function InstituteManagement() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
           <Typography variant="h5" fontWeight={700}>Institutes</Typography>
-          <Typography variant="body2" color="text.secondary">Manage registered institutes</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {loading ? 'Manage registered institutes' : (() => {
+              const active = institutes.filter(i => i.is_active).length;
+              return `${institutes.length} total · ${active} active · ${institutes.length - active} inactive`
+                + (searchQuery.trim() ? ` · ${filteredInstitutes.length} matching search` : '');
+            })()}
+          </Typography>
         </Box>
         <Stack direction="row" spacing={1}>
           <Tooltip title="Refresh">

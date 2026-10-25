@@ -2,6 +2,18 @@ import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 
+// PostgREST caps each response at 1000 rows — page until a short page comes back.
+async function fetchAllRows(query: (from: number, to: number) => PromiseLike<{ data: any[] | null; error: any }>) {
+    const PAGE = 1000;
+    const rows: any[] = [];
+    for (let from = 0; ; from += PAGE) {
+        const { data, error } = await query(from, from + PAGE - 1);
+        if (error) return { data: rows, error };
+        rows.push(...(data ?? []));
+        if (!data || data.length < PAGE) return { data: rows, error: null };
+    }
+}
+
 export async function GET() {
     try {
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -22,7 +34,7 @@ export async function GET() {
 
         // ── Fetch Institute Admins ──
         // institute_admins table joined with institutes for the institute name
-        const { data: adminRows, error: adminErr } = await supabaseAdmin
+        const { data: adminRows, error: adminErr } = await fetchAllRows((from, to) => supabaseAdmin
             .from('institute_admins')
             .select(`
                 id,
@@ -34,7 +46,7 @@ export async function GET() {
                 created_at,
                 institutes ( id, name )
             `)
-            .order('name');
+            .order('name').order('id').range(from, to));
 
         if (adminErr) {
             console.error('[list-users] institute_admins error:', adminErr.message);
@@ -42,7 +54,7 @@ export async function GET() {
 
         // ── Fetch Students ──
         // students table joined with institutes and batches
-        const { data: studentRows, error: studentErr } = await supabaseAdmin
+        const { data: studentRows, error: studentErr } = await fetchAllRows((from, to) => supabaseAdmin
             .from('students')
             .select(`
                 id,
@@ -55,7 +67,7 @@ export async function GET() {
                 institutes ( id, name ),
                 batches ( id, batch_name )
             `)
-            .order('name');
+            .order('name').order('id').range(from, to));
 
         if (studentErr) {
             console.error('[list-users] students error:', studentErr.message);

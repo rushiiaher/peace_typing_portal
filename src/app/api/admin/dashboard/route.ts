@@ -21,7 +21,9 @@ export async function GET() {
         // Run all queries in parallel for speed
         const [
             institutesRes,
+            activeInstitutesRes,
             studentsRes,
+            activeStudentsRes,
             coursesRes,
             batchesRes,
             paymentsRes,
@@ -30,11 +32,13 @@ export async function GET() {
             recentPaymentsRes,
             instituteBreakdownRes,
         ] = await Promise.all([
-            // Total & active institutes
-            admin.from('institutes').select('id, is_active', { count: 'exact' }),
+            // Total & active institutes (exact counts — row data is capped at 1000)
+            admin.from('institutes').select('id', { count: 'exact', head: true }),
+            admin.from('institutes').select('id', { count: 'exact', head: true }).eq('is_active', true),
 
             // Total & active students
-            admin.from('students').select('id, is_active', { count: 'exact' }),
+            admin.from('students').select('id', { count: 'exact', head: true }),
+            admin.from('students').select('id', { count: 'exact', head: true }).eq('is_active', true),
 
             // Total active courses
             admin.from('courses').select('id', { count: 'exact' }).eq('is_active', true),
@@ -82,13 +86,10 @@ export async function GET() {
         ]);
 
         // ── Compute Stats ─────────────────────────────────────────────────────
-        const institutes = institutesRes.data ?? [];
-        const active_institutes = institutes.filter((i: any) => i.is_active).length;
-        const total_institutes = institutes.length;
-
-        const students = studentsRes.data ?? [];
-        const active_students = students.filter((s: any) => s.is_active).length;
-        const total_students = students.length;
+        const total_institutes = institutesRes.count ?? 0;
+        const active_institutes = activeInstitutesRes.count ?? 0;
+        const total_students = studentsRes.count ?? 0;
+        const active_students = activeStudentsRes.count ?? 0;
 
         const total_courses = coursesRes.count ?? 0;
         const total_batches = batchesRes.count ?? 0;

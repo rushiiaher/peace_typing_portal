@@ -253,7 +253,7 @@ export default function UserManagement() {
 
   // ─── Filtering ────────────────────────────────────────────────────────────
 
-  const q = searchQuery.toLowerCase();
+  const q = searchQuery.trim().toLowerCase();
   const filteredStudents = students.filter(s =>
     [s.full_name, s.email, s.institute_name].join(' ').toLowerCase().includes(q));
   const filteredAdmins = admins.filter(a =>
@@ -291,8 +291,8 @@ export default function UserManagement() {
 
       {/* Tabs */}
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab icon={<Person fontSize="small" />} iconPosition="start" label={`Students (${students.length})`} />
-        <Tab icon={<AdminPanelSettings fontSize="small" />} iconPosition="start" label={`Institute Admins (${admins.length})`} />
+        <Tab icon={<Person fontSize="small" />} iconPosition="start" label={`Students (${q ? `${filteredStudents.length} of ` : ''}${students.length})`} />
+        <Tab icon={<AdminPanelSettings fontSize="small" />} iconPosition="start" label={`Institute Admins (${q ? `${filteredAdmins.length} of ` : ''}${admins.length})`} />
       </Tabs>
 
       {/* Grids */}
@@ -305,14 +305,14 @@ export default function UserManagement() {
           {tab === 0 && (
             <Paper variant="outlined">
               <DataGrid rows={filteredStudents} columns={studentCols} autoHeight
-                pageSizeOptions={[10, 25, 50]} initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
+                pageSizeOptions={[10, 25, 50, 100]} initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
                 getRowId={r => r.id} />
             </Paper>
           )}
           {tab === 1 && (
             <Paper variant="outlined">
               <DataGrid rows={filteredAdmins} columns={adminCols} autoHeight
-                pageSizeOptions={[10, 25, 50]} initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
+                pageSizeOptions={[10, 25, 50, 100]} initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
                 getRowId={r => r.id} />
             </Paper>
           )}
