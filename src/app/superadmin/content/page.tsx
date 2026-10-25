@@ -162,6 +162,7 @@ export default function ContentManagement() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       setUploadResult({ inserted: json.inserted, errors: json.errors ?? [] });
+      setErrorsExpanded(json.inserted === 0);
       if (json.inserted > 0) fetchItems(currentType, selectedCourseId);
     } catch (e: any) { showSnackbar(e.message, 'error'); }
     finally { setUploading(false); }
@@ -896,8 +897,10 @@ export default function ContentManagement() {
             {uploadResult && (
               <Paper variant="outlined" sx={{ p: 2, bgcolor: uploadResult.errors.length > 0 ? 'warning.50' : 'success.50' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                  <CheckCircle color="success" />
-                  <Typography fontWeight={700} color="success.dark">{uploadResult.inserted} record(s) imported successfully.</Typography>
+                  {uploadResult.inserted > 0 ? <CheckCircle color="success" /> : <ErrorOutline color="error" />}
+                  <Typography fontWeight={700} color={uploadResult.inserted > 0 ? 'success.dark' : 'error.main'}>
+                    {uploadResult.inserted > 0 ? `${uploadResult.inserted} record(s) imported successfully.` : 'No records imported — see errors below.'}
+                  </Typography>
                 </Box>
                 {uploadResult.errors.length > 0 && (
                   <>

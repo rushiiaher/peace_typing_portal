@@ -55,6 +55,103 @@ function parseSheetAsGrid(sheet: XLSX.WorkSheet): {
     return { data, merges, styles };
 }
 
+// "Option A", "option_a", " OPTION-A " → "optiona"
+const normHeader = (h: unknown) => String(h ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const normQuestion = (q: string) => q.trim().toLowerCase().replace(/\s+/g, ' ');
+
+const MCQ_HEADERS: Record<string, string> = {
+    question: 'question',
+    optiona: 'option_a', optionb: 'option_b', optionc: 'option_c', optiond: 'option_d',
+    correctanswer: 'correct_answer', answer: 'correct_answer', correctoption: 'correct_answer',
+    explanation: 'explanation',
+};
+const MCQ_REQUIRED = ['question', 'option_a', 'option_b', 'option_c', 'option_d', 'correct_answer'];
+
+/** Accepts "a", "A)", "(B)", "Option C", "Ans: d", "1".."4", or the full text of one option. */
+function parseCorrectAnswer(raw: string, options: Record<string, string>): string | null {
+    const s = raw.trim().toLowerCase().replace(/^(option|opt|answer|ans)\s*[:.\-_]?\s*/, '').replace(/[().\s]/g, '');
+    if (['a', 'b', 'c', 'd'].includes(s)) return s;
+    if (['1', '2', '3', '4'].includes(s)) return 'abcd'[Number(s) - 1];
+    const byText = Object.entries(options).find(([, v]) => v.trim().toLowerCase() === raw.trim().toLowerCase());
+    return byText ? byText[0] : null;
+}
+
+async function importMcq(buffer: Buffer, courseId: string) {
+    const workbook = XLSX.read(buffer, { type: 'buffer', cellText: true, cellFormula: false });
+    const grid = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], {
+        header: 1, raw: false, defval: '', blankrows: false,
+    }) as string[][];
+
+    // Header may sit below a title row — take the first row (within 10) that has a "question" column.
+    const headerIdx = grid.slice(0, 10).findIndex(r => r.some(c => normHeader(c) === 'question'));
+    const colOf: Record<string, number> = {};
+    (grid[headerIdx] ?? []).forEach((h, i) => {
+        const key = MCQ_HEADERS[normHeader(h)];
+        if (key && colOf[key] === undefined) colOf[key] = i;
+    });
+    const missing = MCQ_REQUIRED.filter(k => colOf[k] === undefined);
+    if (missing.length) {
+        return NextResponse.json({
+            error: `Missing required column(s): ${missing.join(', ')}. Expected headers: ${[...MCQ_REQUIRED, 'explanation'].join(', ')}.`,
+        }, { status: 400 });
+    }
+
+    const admin = getAdmin();
+    const { data: existing, error: exErr } = await admin
+        .from('mcq_question_bank').select('question').eq('course_id', courseId);
+    if (exErr) throw exErr;
+    const seen = new Set((existing ?? []).map(r => normQuestion(r.question)));
+
+    const toInsert: any[] = [];
+    const errors: string[] = [];
+    let duplicates = 0;
+
+    for (let i = headerIdx + 1; i < grid.length; i++) {
+        const row = grid[i];
+        const rowNum = i + 1;
+        const cell = (k: string) => String(row[colOf[k]] ?? '').trim();
+        if (MCQ_REQUIRED.every(k => !cell(k))) continue; // blank row
+
+        const question = cell('question');
+        const options = { a: cell('option_a'), b: cell('option_b'), c: cell('option_c'), d: cell('option_d') };
+        const rawAnswer = cell('correct_answer');
+        const explanation = colOf.explanation !== undefined ? cell('explanation') || null : null;
+
+        if (!question) { errors.push(`Row ${rowNum}: "question" is empty.`); continue; }
+        const emptyOpts = Object.entries(options).filter(([, v]) => !v).map(([k]) => `option_${k}`);
+        if (emptyOpts.length) { errors.push(`Row ${rowNum}: ${emptyOpts.join(', ')} empty — all four options are required.`); continue; }
+        const correct_answer = parseCorrectAnswer(rawAnswer, options);
+        if (!correct_answer) { errors.push(`Row ${rowNum}: "correct_answer" must be a, b, c or d (got "${rawAnswer}").`); continue; }
+
+        const key = normQuestion(question);
+        if (seen.has(key)) { duplicates++; errors.push(`Row ${rowNum}: duplicate question — already in this course or earlier in the file, skipped.`); continue; }
+        seen.add(key);
+
+        toInsert.push({
+            course_id: courseId, question,
+            option_a: options.a, option_b: options.b, option_c: options.c, option_d: options.d,
+            correct_answer, explanation, is_active: true,
+        });
+    }
+
+    if (!toInsert.length && !errors.length) {
+        return NextResponse.json({ error: 'No question rows found below the header row.' }, { status: 400 });
+    }
+
+    if (toInsert.length) {
+        const { error } = await admin.from('mcq_question_bank').insert(toInsert);
+        if (error) {
+            return NextResponse.json({ inserted: 0, errors: [error.message, ...errors], message: `0 record(s) imported.` }, { status: 201 });
+        }
+    }
+
+    return NextResponse.json({
+        inserted: toInsert.length,
+        errors,
+        message: `${toInsert.length} record(s) imported. ${errors.length - duplicates} error(s), ${duplicates} duplicate(s) skipped.`,
+    }, { status: 201 });
+}
+
 // ─── POST /api/admin/content/bulk-upload?type=... ────────────────────────────
 export async function POST(req: NextRequest) {
     try {
@@ -71,7 +168,13 @@ export async function POST(req: NextRequest) {
         if (!courseId) return NextResponse.json({ error: 'course_id is required.' }, { status: 400 });
         if (!type) return NextResponse.json({ error: 'type is required.' }, { status: 400 });
 
+        if (!/\.(xlsx|xls|csv)$/i.test(file.name)) {
+            return NextResponse.json({ error: 'Unsupported file type. Upload .xlsx, .xls or .csv.' }, { status: 400 });
+        }
+
         const buffer = Buffer.from(await file.arrayBuffer());
+
+        if (type === 'mcq_question_bank') return await importMcq(buffer, courseId);
 
         // ── Statement Templates: whole-sheet grid upload ──────────────────────
         // The admin uploads a normal Excel file that IS the statement.
@@ -214,35 +317,6 @@ export async function POST(req: NextRequest) {
                     const { data, error } = await admin.from('letter_templates').insert({
                         course_id: courseId, title, category: category || null,
                         template_content, is_active: true,
-                    }).select().single();
-                    if (error) throw error;
-                    inserted.push(data);
-
-                } else if (type === 'mcq_question_bank') {
-                    const g = (keys: string[]) => {
-                        for (const k of keys) {
-                            const val = row[k] ?? row[k.replace(/_/g, ' ')] ?? '';
-                            if (val.toString().trim()) return val.toString().trim();
-                        }
-                        return '';
-                    };
-
-                    const question = g(['question', 'Question']);
-                    const option_a = g(['option_a', 'Option A', 'Option_A', 'OptionA']);
-                    const option_b = g(['option_b', 'Option B', 'Option_B', 'OptionB']);
-                    const option_c = g(['option_c', 'Option C', 'Option_C', 'OptionC']);
-                    const option_d = g(['option_d', 'Option D', 'Option_D', 'OptionD']);
-                    const correct_answer = g(['correct_answer', 'Correct Answer', 'Answer']).toLowerCase();
-                    const explanation = g(['explanation', 'Explanation']) || null;
-
-                    if (!question) { errors.push(`Row ${rowNum}: "question" is required.`); continue; }
-                    if (!option_a || !option_b || !option_c || !option_d) { errors.push(`Row ${rowNum}: all four options (a, b, c, d) are required.`); continue; }
-                    if (!['a', 'b', 'c', 'd'].includes(correct_answer)) { errors.push(`Row ${rowNum}: "correct_answer" must be a, b, c, or d (got "${correct_answer}").`); continue; }
-
-                    const { data, error } = await admin.from('mcq_question_bank').insert({
-                        course_id: courseId, question,
-                        option_a, option_b, option_c, option_d,
-                        correct_answer, explanation, is_active: true,
                     }).select().single();
                     if (error) throw error;
                     inserted.push(data);
