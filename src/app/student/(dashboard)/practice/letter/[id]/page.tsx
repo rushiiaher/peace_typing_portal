@@ -290,7 +290,7 @@ export default function LetterPracticeSession() {
         const passed = finalAccuracy >= 80;
         return (
             <Box sx={{
-                minHeight: '100vh', bgcolor: '#1e3a5f',
+                position: 'fixed', inset: 0, zIndex: 1400, overflow: 'auto', bgcolor: '#1e3a5f',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
                 <Box sx={{
@@ -378,7 +378,12 @@ export default function LetterPracticeSession() {
                     {/* Left: Reference Document (50%) */}
                     <Box sx={{
                         width: '50%',
-                        overflow: 'auto',
+                        // Always-visible scrollbar: the A4 reference is taller than most
+                        // screens, and overlay scrollbars (macOS/touch) hide that it scrolls.
+                        overflowY: 'scroll',
+                        '&::-webkit-scrollbar': { width: 12 },
+                        '&::-webkit-scrollbar-track': { bgcolor: '#555' },
+                        '&::-webkit-scrollbar-thumb': { bgcolor: '#bbb', borderRadius: 6, border: '3px solid #555' },
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',

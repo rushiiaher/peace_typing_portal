@@ -192,7 +192,7 @@ export default function SpeedPracticeSession() {
     if (sessionState === 'finished') {
         const passed = finalAccuracy >= 90;
         return (
-            <Box sx={{ minHeight: '100vh', bgcolor: '#1e3a5f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Box sx={{ position: 'fixed', inset: 0, zIndex: 1300, overflow: 'auto', bgcolor: '#1e3a5f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Box sx={{ bgcolor: 'white', borderRadius: 3, p: 5, maxWidth: 520, width: '100%', mx: 2, textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
                     <CheckCircle sx={{ fontSize: 72, color: passed ? '#16a34a' : '#f59e0b', mb: 2 }} />
                     <Typography variant="h4" fontWeight={800} gutterBottom>{passed ? '🎉 Excellent!' : '💪 Good Effort!'}</Typography>
