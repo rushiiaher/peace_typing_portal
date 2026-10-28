@@ -171,7 +171,10 @@ export async function PATCH(req: NextRequest) {
     }
 }
 
-// DELETE /api/admin/content?type=keyboard_lessons&id=uuid
+// DELETE /api/admin/content?type=mcq_question_bank   body: { ids: string[] }
+// Content still referenced by an exam is deactivated (is_active=false) instead of
+// removed, so scheduled exams and past results keep resolving. Everything else is
+// hard-deleted. Either way it disappears from practice and new exam scheduling.
 export async function DELETE(req: NextRequest) {
     try {
         const supabase = await createClient();
@@ -179,14 +182,34 @@ export async function DELETE(req: NextRequest) {
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const type = req.nextUrl.searchParams.get('type') ?? '';
-        const id = req.nextUrl.searchParams.get('id') ?? '';
         const table = TABLE_MAP[type];
-        if (!table || !id) return NextResponse.json({ error: 'type and id are required.' }, { status: 400 });
+        const body = await req.json().catch(() => ({}));
+        const ids: string[] = Array.isArray(body.ids) ? body.ids.filter((x: unknown) => typeof x === 'string') : [];
+        if (!table || ids.length === 0) return NextResponse.json({ error: 'type and ids are required.' }, { status: 400 });
 
         const admin = getAdmin();
-        const { error } = await admin.from(table).delete().eq('id', id);
-        if (error) throw error;
-        return NextResponse.json({ message: 'Deleted.' });
+        let deleted = 0, deactivated = 0;
+        // Chunk so the PostgREST `in` filter stays within URL limits.
+        for (let i = 0; i < ids.length; i += 200) {
+            const chunk = ids.slice(i, i + 200);
+            const { data: refs, error: refErr } = await admin
+                .from('exam_question_assignments').select('content_id').in('content_id', chunk);
+            if (refErr) throw refErr;
+            const used = [...new Set((refs ?? []).map(r => r.content_id as string))];
+            const unused = chunk.filter(id => !used.includes(id));
+
+            if (used.length) {
+                const { error } = await admin.from(table).update({ is_active: false }).in('id', used);
+                if (error) throw error;
+                deactivated += used.length;
+            }
+            if (unused.length) {
+                const { error } = await admin.from(table).delete().in('id', unused);
+                if (error) throw error;
+                deleted += unused.length;
+            }
+        }
+        return NextResponse.json({ deleted, deactivated });
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
     }

@@ -9,7 +9,7 @@ import {
   LinearProgress, Collapse, Avatar, Card, CardContent,
   CardActionArea, Grid, Badge, FormControl, InputLabel, Select,
 } from '@mui/material';
-import { DataGrid, GridColDef, GridActionsCellItem, GridRowParams } from '@mui/x-data-grid';
+import { DataGrid, GridColDef, GridActionsCellItem, GridRowParams, GridRowSelectionModel } from '@mui/x-data-grid';
 import {
   Add, DeleteOutline, Search, Refresh, School, Speed,
   Mail, Article, QuestionMark, Keyboard, EditOutlined,
@@ -73,6 +73,7 @@ export default function ContentManagement() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [selection, setSelection] = useState<GridRowSelectionModel>([]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ContentItem | null>(null);
@@ -106,6 +107,7 @@ export default function ContentManagement() {
   }, []);
 
   const fetchItems = useCallback(async (type: string, courseId: string) => {
+    setSelection([]);
     if (!courseId) { setItems([]); return; }
     setLoading(true);
     const res = await fetch(`/api/admin/content?type=${type}&course_id=${courseId}`);
@@ -288,11 +290,22 @@ export default function ContentManagement() {
 
   // ─── Delete ───────────────────────────────────────────────────────────────
 
-  const handleDelete = async (row: ContentItem) => {
-    if (!confirm(`Delete "${row.title}"?`)) return;
-    const res = await fetch(`/api/admin/content?type=${currentType}&id=${row.id}`, { method: 'DELETE' });
-    if (res.ok) { showSnackbar('Deleted.', 'success'); fetchItems(currentType, selectedCourseId); }
-    else { const j = await res.json(); showSnackbar(j.error, 'error'); }
+  const handleDelete = async (ids: string[], label: string) => {
+    if (!confirm(`Delete ${label}? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/admin/content?type=${currentType}`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { showSnackbar(j.error || 'Delete failed.', 'error'); return; }
+      showSnackbar(
+        `Deleted ${j.deleted}.` + (j.deactivated ? ` ${j.deactivated} used in exams were deactivated instead (kept for exam history).` : ''),
+        'success',
+      );
+    } catch {
+      showSnackbar('Delete failed — network error.', 'error');
+    }
+    fetchItems(currentType, selectedCourseId);
   };
 
   // ─── DataGrid Columns ─────────────────────────────────────────────────────
@@ -331,7 +344,7 @@ export default function ContentManagement() {
       field: 'actions', type: 'actions', headerName: 'Actions', width: 90,
       getActions: (p: GridRowParams<ContentItem>) => [
         <GridActionsCellItem key="edit" icon={<Tooltip title="Edit"><EditOutlined /></Tooltip>} label="Edit" onClick={() => openEdit(p.row)} color="primary" />,
-        <GridActionsCellItem key="del" icon={<Tooltip title="Delete"><DeleteOutline /></Tooltip>} label="Delete" onClick={() => handleDelete(p.row)} color="error" />,
+        <GridActionsCellItem key="del" icon={<Tooltip title="Delete"><DeleteOutline /></Tooltip>} label="Delete" onClick={() => handleDelete([p.row.id], `"${p.row.title}"`)} color="error" />,
       ],
     },
   ];
@@ -780,11 +793,25 @@ export default function ContentManagement() {
                   </Button>
                 </Box>
               ) : (
+                <>
+                {selection.length > 0 && (
+                  <Stack direction="row" alignItems="center" spacing={2} sx={{ px: 2, py: 1, bgcolor: 'error.50', borderBottom: '1px solid', borderColor: 'divider' }}>
+                    <Typography variant="body2" fontWeight={600}>{selection.length} selected</Typography>
+                    <Button size="small" color="error" variant="contained" startIcon={<DeleteOutline />}
+                      onClick={() => handleDelete(selection as string[], `${selection.length} selected item(s)`)}>
+                      Delete selected
+                    </Button>
+                    <Button size="small" onClick={() => setSelection([])}>Clear</Button>
+                  </Stack>
+                )}
                 <DataGrid
                   rows={filtered} columns={cols} autoHeight getRowId={r => r.id}
+                  checkboxSelection disableRowSelectionOnClick
+                  rowSelectionModel={selection} onRowSelectionModelChange={setSelection}
                   pageSizeOptions={[10, 25, 50]}
                   initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
                 />
+                </>
               )}
             </Paper>
           )}

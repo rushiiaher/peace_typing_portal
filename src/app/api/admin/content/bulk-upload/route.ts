@@ -98,7 +98,7 @@ async function importMcq(buffer: Buffer, courseId: string) {
 
     const admin = getAdmin();
     const { data: existing, error: exErr } = await admin
-        .from('mcq_question_bank').select('question').eq('course_id', courseId);
+        .from('mcq_question_bank').select('question').eq('course_id', courseId).eq('is_active', true);
     if (exErr) throw exErr;
     const seen = new Set((existing ?? []).map(r => normQuestion(r.question)));
 

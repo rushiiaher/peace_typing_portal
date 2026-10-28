@@ -393,23 +393,23 @@ export async function POST(req: NextRequest) {
             const assignments: any[] = [];
 
             if (pattern.mcq_count > 0) {
-                const { data: mcqs } = await admin.from('mcq_question_bank').select('id').eq('course_id', courseId).limit(pattern.mcq_count);
+                const { data: mcqs } = await admin.from('mcq_question_bank').select('id').eq('course_id', courseId).eq('is_active', true).limit(pattern.mcq_count);
                 (mcqs as any[])?.forEach(q => assignments.push({ exam_id: ex.id, question_type: 'mcq', content_id: q.id }));
             }
             if (pattern.speed_passage_count > 0) {
-                const { data: speed } = await admin.from('speed_passages').select('id').eq('course_id', courseId).limit(pattern.speed_passage_count);
+                const { data: speed } = await admin.from('speed_passages').select('id').eq('course_id', courseId).eq('is_active', true).limit(pattern.speed_passage_count);
                 (speed as any[])?.forEach(q => assignments.push({ exam_id: ex.id, question_type: 'speed', content_id: q.id }));
             }
             if (pattern.letter_count > 0) {
-                const { data: letters } = await admin.from('letter_templates').select('id').eq('course_id', courseId).limit(pattern.letter_count);
+                const { data: letters } = await admin.from('letter_templates').select('id').eq('course_id', courseId).eq('is_active', true).limit(pattern.letter_count);
                 (letters as any[])?.forEach(q => assignments.push({ exam_id: ex.id, question_type: 'letter', content_id: q.id }));
             }
             if (pattern.statement_count > 0) {
-                const { data: statements } = await admin.from('statement_templates').select('id').eq('course_id', courseId).limit(pattern.statement_count);
+                const { data: statements } = await admin.from('statement_templates').select('id').eq('course_id', courseId).eq('is_active', true).limit(pattern.statement_count);
                 (statements as any[])?.forEach(q => assignments.push({ exam_id: ex.id, question_type: 'statement', content_id: q.id }));
             }
             if (pattern.email_count > 0) {
-                const { data: emails } = await admin.from('email_templates').select('id').eq('course_id', courseId).limit(pattern.email_count);
+                const { data: emails } = await admin.from('email_templates').select('id').eq('course_id', courseId).eq('is_active', true).limit(pattern.email_count);
                 (emails as any[])?.forEach(q => assignments.push({ exam_id: ex.id, question_type: 'email', content_id: q.id }));
             }
 
