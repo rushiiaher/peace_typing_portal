@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    if (user.user_metadata?.role !== 'super_admin')
+    if (user.app_metadata?.role !== 'super_admin')
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const service = getServiceClient();
@@ -58,7 +58,7 @@ export async function PATCH(req: NextRequest) {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    if (user.user_metadata?.role !== 'super_admin')
+    if (user.app_metadata?.role !== 'super_admin')
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { ticket_id, status, admin_reply } = await req.json();

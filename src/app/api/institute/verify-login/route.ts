@@ -10,8 +10,8 @@ export async function POST() {
             return NextResponse.json({ allowed: false, reason: 'Unauthorized' }, { status: 401 });
         }
 
-        // Primary check: user_metadata.role
-        if (user.user_metadata?.role === 'institute_admin') {
+        // Primary check: app_metadata.role (service-role only, not user-editable)
+        if (user.app_metadata?.role === 'institute_admin') {
             return NextResponse.json({ allowed: true });
         }
 

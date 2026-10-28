@@ -10,7 +10,7 @@ export async function POST() {
             return NextResponse.json({ allowed: false, reason: 'unauthorized' }, { status: 401 });
         }
 
-        if (user.user_metadata?.role !== 'student') {
+        if (user.app_metadata?.role !== 'student') {
             return NextResponse.json({ allowed: false, reason: 'not_student' });
         }
 
