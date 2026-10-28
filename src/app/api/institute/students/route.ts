@@ -215,6 +215,7 @@ export async function POST(request: NextRequest) {
                         role: 'student',
                         phone: phone || null,
                     },
+                    app_metadata: { role: 'student' },
                 }
             );
             if (updateError) {
@@ -232,6 +233,7 @@ export async function POST(request: NextRequest) {
                     role: 'student',
                     phone: phone || null,
                 },
+                app_metadata: { role: 'student' },
             });
             if (createError) {
                 return NextResponse.json({ error: createError.message }, { status: 400 });

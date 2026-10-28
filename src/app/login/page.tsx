@@ -1,5 +1,5 @@
 
-import { login, signup } from './actions'
+import { login } from './actions'
 
 export default function LoginPage({
     searchParams,
@@ -75,12 +75,6 @@ export default function LoginPage({
                                 className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                             >
                                 Sign in
-                            </button>
-                            <button
-                                formAction={signup}
-                                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-indigo-600 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 mt-2"
-                            >
-                                Sign up
                             </button>
                         </div>
                         {searchParams?.message && (

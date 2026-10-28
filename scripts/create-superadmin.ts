@@ -19,7 +19,8 @@ async function createSuperAdmin() {
       user_metadata: {
         role: 'super_admin',
         full_name: 'Super Admin'
-      }
+      },
+      app_metadata: { role: 'super_admin' }
     })
 
     if (authError) {

@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
                 role: 'institute_admin',   // ← trigger reads this to set profiles.role
                 phone: phone || null,
             },
+            app_metadata: { role: 'institute_admin' },   // trusted copy — users cannot edit app_metadata
         });
 
         if (authError) {

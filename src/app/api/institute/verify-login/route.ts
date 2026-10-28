@@ -40,6 +40,7 @@ export async function POST() {
         const existingMeta = user.user_metadata ?? {};
         await admin.auth.admin.updateUserById(user.id, {
             user_metadata: { ...existingMeta, role: 'institute_admin' },
+            app_metadata: { role: 'institute_admin' },
         });
 
         return NextResponse.json({ allowed: true });
