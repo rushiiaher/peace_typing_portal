@@ -14,6 +14,7 @@ import {
     Undo, Redo, Lock, LockOpen, EastOutlined,
 } from '@mui/icons-material';
 import FortuneSheetWrapper from './FortuneSheetWrapper';
+import { blockPasteProps } from '@/utils/blockPaste';
 import { convertToFortuneSheetData } from '../../utils/fortuneSheetAdapter';
 
 // ── Letter reference renderer ─────────────────────────────────────────────────
@@ -214,6 +215,7 @@ function LetterEditor({ isMarathi, readOnly, editorRef }: LetterEditorProps) {
                 suppressContentEditableWarning
                 onInput={updateCount}
                 onKeyDown={handleKeyDown}
+                {...blockPasteProps}
                 data-placeholder={readOnly ? '' : 'Type the letter exactly as shown in the reference…'}
                 sx={{
                     minHeight: 500,

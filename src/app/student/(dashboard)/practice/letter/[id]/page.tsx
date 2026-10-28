@@ -468,6 +468,12 @@ export default function LetterPracticeSession() {
                                     help_accessibility: false,
                                     skin: 'oxide',
                                     setup: (editor: any) => {
+                                        // Block paste (Ctrl/Cmd+V, context menu, Edit menu) and drag-drop
+                                        // so typing metrics reflect what the student actually typed.
+                                        editor.on('paste drop', (e: Event) => e.preventDefault());
+                                        editor.on('BeforeExecCommand', (e: any) => {
+                                            if (/^(paste|mceInsertClipboardContent)$/i.test(e.command)) e.preventDefault();
+                                        });
                                         editor.on('keydown', (e: KeyboardEvent) => {
                                             if (e.key === 'Tab') {
                                                 e.preventDefault();

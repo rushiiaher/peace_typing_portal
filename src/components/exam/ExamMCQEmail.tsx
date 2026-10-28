@@ -7,6 +7,7 @@ import {
     Dialog, DialogTitle, DialogContent, DialogActions, TextField,
     Divider, Tooltip, Badge,
 } from '@mui/material';
+import { blockPasteProps } from '@/utils/blockPaste';
 import { Timer, Send, QuestionAnswer, Email, ArrowBack, ArrowForward, CheckCircle, HighlightOff, EastOutlined } from '@mui/icons-material';
 
 interface EmailParts {
@@ -377,7 +378,7 @@ export default function ExamMCQEmail({ mcqs, email, duration, onComplete }: any)
                                 <Typography variant="overline" color="primary" fontWeight={700} sx={{ display: 'block', mb: 1 }}>
                                     ✏️ Your Editor
                                 </Typography>
-                                <Stack spacing={2}>
+                                <Stack spacing={2} {...blockPasteProps}>
                                     <TextField label="To" fullWidth size="small"
                                         value={emailValues.mail_to || ''}
                                         onChange={(e) => handleEmailChange('mail_to', e.target.value)} />

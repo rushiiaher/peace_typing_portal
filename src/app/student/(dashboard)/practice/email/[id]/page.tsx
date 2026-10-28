@@ -10,6 +10,7 @@ import {
     ArrowBack, Send, Replay, CheckCircle, Speed, GpsFixed,
     ErrorOutline, Timer, ArrowForward, AttachFile,
 } from '@mui/icons-material';
+import { blockPasteProps } from '@/utils/blockPaste';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -88,7 +89,7 @@ function EmailPanel({
     const focusStyle: React.CSSProperties = { border: '2px solid #4fa0e6' };
 
     return (
-        <Box sx={{
+        <Box {...(!isReference && blockPasteProps)} sx={{
             flex: 1, border: '2px solid #ccc', borderRadius: 1, overflow: 'hidden',
             bgcolor: 'white', display: 'flex', flexDirection: 'column',
             boxShadow: '2px 2px 6px rgba(0,0,0,0.15)',
