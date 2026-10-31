@@ -1,7 +1,7 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { courseFallbackContent } from '@/utils/examContent';
+import { courseFallbackContent, topUpMcqs } from '@/utils/examContent';
 import { examGate, isExamExpired, EXPIRED_MESSAGE } from '@/utils/examWindow';
 
 function getAdmin() {
@@ -83,8 +83,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         // (e.g. content deleted, or table empty when exams were scheduled).
         for (const [key, table] of [['statement', 'statement_templates'], ['letter', 'letter_templates'],
             ['email', 'email_templates'], ['speed', 'speed_passages']] as const) {
-            if (!fullContent[key]) fullContent[key] = await courseFallbackContent(admin, table, exam.course_id);
+            if (!fullContent[key]) fullContent[key] = await courseFallbackContent(admin, table, exam.course_id, exam.courses?.language_id);
         }
+        // Orphaned/short MCQ assignments left students with an empty Section 1.
+        fullContent.mcq = await topUpMcqs(admin, id, exam.course_id, fullContent.mcq, exam.exam_patterns?.mcq_count || 25);
 
         // 4. Fetch exam_answers to determine resume section
         const { data: examAnswers } = await admin

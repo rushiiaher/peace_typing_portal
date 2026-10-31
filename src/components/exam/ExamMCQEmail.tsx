@@ -5,9 +5,10 @@ import {
     Box, Typography, Button, Paper, Radio, RadioGroup,
     FormControlLabel, FormControl, Stack, Grid, IconButton,
     Dialog, DialogTitle, DialogContent, DialogActions, TextField,
-    Divider, Tooltip, Badge,
+    Divider, Tooltip, Badge, Alert,
 } from '@mui/material';
 import { blockPasteProps } from '@/utils/blockPaste';
+import { sectionSecondsLeft } from '@/utils/sectionTimer';
 import { Timer, Send, QuestionAnswer, Email, ArrowBack, ArrowForward, CheckCircle, HighlightOff, EastOutlined } from '@mui/icons-material';
 
 interface EmailParts {
@@ -50,8 +51,9 @@ function getStatus(
     return 'notVisited';
 }
 
-export default function ExamMCQEmail({ mcqs, email, duration, onComplete, isMarathi: isMarathiProp }: any) {
-    const [timeLeft, setTimeLeft] = useState(duration * 60);
+export default function ExamMCQEmail({ mcqs, email, duration, onComplete, isMarathi: isMarathiProp, timerKey }: any) {
+    // Deadline survives a page refresh (refresh used to restart the 25-min clock)
+    const [timeLeft, setTimeLeft] = useState(() => sectionSecondsLeft(timerKey, duration * 60));
     const [activeTab, setActiveTab] = useState<'mcq' | 'email'>('mcq');
     const [currentMcqIndex, setCurrentMcqIndex] = useState(0);
     const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -64,20 +66,32 @@ export default function ExamMCQEmail({ mcqs, email, duration, onComplete, isMara
     const onCompleteRef = useRef(onComplete);
     useEffect(() => { onCompleteRef.current = onComplete; }, [onComplete]);
 
-    const handleComplete = useCallback(() => {
-        onCompleteRef.current({ answers, emailValues });
-    }, [answers, emailValues]);
+    // Refs so the timer submits the LATEST answers — it used to capture the
+    // first render's empty state and submit nothing on time-out.
+    const answersRef = useRef(answers);
+    const emailRef = useRef(emailValues);
+    useEffect(() => { answersRef.current = answers; emailRef.current = emailValues; }, [answers, emailValues]);
+    const submittingRef = useRef(false);
+    const [submitting, setSubmitting] = useState(false);
+
+    const handleComplete = useCallback(async () => {
+        if (submittingRef.current) return;
+        submittingRef.current = true;
+        setSubmitting(true);
+        const ok = await onCompleteRef.current({ answers: answersRef.current, emailValues: emailRef.current });
+        if (ok === false) { submittingRef.current = false; setSubmitting(false); } // save failed → allow retry
+    }, []);
 
     // Timer
     useEffect(() => {
         const timer = setInterval(() => {
             setTimeLeft((prev: number) => {
-                if (prev <= 1) { handleComplete(); return 0; }
+                if (prev <= 1) { clearInterval(timer); handleComplete(); return 0; }
                 return prev - 1;
             });
         }, 1000);
         return () => clearInterval(timer);
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [handleComplete]);
 
     const formatTime = (seconds: number) => {
         const m = Math.floor(seconds / 60);
@@ -123,6 +137,14 @@ export default function ExamMCQEmail({ mcqs, email, duration, onComplete, isMara
     // Guide the next step: after all MCQs, push Email; after Email, push Submit.
     const highlightEmail = mcqAllDone && !emailStarted && activeTab === 'mcq';
     const highlightSubmit = mcqAllDone && emailStarted;
+    // Section can only be submitted once every MCQ is answered and the email
+    // body is written — or when time is up.
+    const unanswered = (mcqs?.length ?? 0) - answeredCount;
+    const missing = [
+        unanswered > 0 && `${unanswered} MCQ(s) unanswered`,
+        !emailStarted && 'email body not written',
+    ].filter(Boolean) as string[];
+    const canSubmit = timeLeft === 0 || missing.length === 0;
     const timerCritical = timeLeft < 300;
 
     return (
@@ -174,8 +196,10 @@ export default function ExamMCQEmail({ mcqs, email, duration, onComplete, isMara
                             <Typography variant="h6" fontFamily="monospace" fontWeight={700}>{formatTime(timeLeft)}</Typography>
                         </Box>
                     </Box>
+                    <Tooltip title={canSubmit ? '' : `Complete first: ${missing.join(', ')}`}>
+                    <span>
                     <Button variant="contained" color="success" startIcon={<CheckCircle />}
-                        onClick={() => setShowSubmitConfirm(true)}
+                        onClick={() => setShowSubmitConfirm(true)} disabled={!canSubmit || submitting}
                         sx={highlightSubmit ? {
                             animation: 'pulse 1.2s infinite',
                             boxShadow: '0 0 0 3px rgba(22,163,74,0.35)',
@@ -183,6 +207,8 @@ export default function ExamMCQEmail({ mcqs, email, duration, onComplete, isMara
                         } : undefined}>
                         Submit Section 1
                     </Button>
+                    </span>
+                    </Tooltip>
                 </Stack>
             </Paper>
 
@@ -439,10 +465,15 @@ export default function ExamMCQEmail({ mcqs, email, duration, onComplete, isMara
                         )}
                         <Typography variant="body2">• Email Body: {emailValues.body?.length || 0} characters</Typography>
                     </Box>
+                    {!canSubmit && (
+                        <Alert severity="warning" sx={{ mt: 2 }}>
+                            You must complete this section before moving on: {missing.join(', ')}.
+                        </Alert>
+                    )}
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setShowSubmitConfirm(false)}>Go Back</Button>
-                    <Button variant="contained" color="success" endIcon={<EastOutlined />} onClick={handleComplete}>
+                    <Button variant="contained" color="success" endIcon={<EastOutlined />} onClick={handleComplete} disabled={!canSubmit || submitting}>
                         Confirm &amp; Proceed to Section 2
                     </Button>
                 </DialogActions>

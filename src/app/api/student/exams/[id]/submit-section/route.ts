@@ -68,6 +68,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             throw checkError;
         }
 
+        // Enforce section order: each section once, and only after the previous one.
+        const done = {
+            1: existingAnswer?.mcq_answers != null,
+            2: existingAnswer?.letter_html != null,
+            3: existingAnswer?.speed_wpm != null,
+        } as Record<number, boolean>;
+        if (![1, 2, 3].includes(section)) return NextResponse.json({ error: 'Invalid section.' }, { status: 400 });
+        if (done[section]) return NextResponse.json({ error: `Section ${section} already submitted.` }, { status: 409 });
+        if (section > 1 && !done[section - 1]) {
+            return NextResponse.json({ error: `Submit Section ${section - 1} first.` }, { status: 400 });
+        }
+
         const updateData: any = {};
 
         if (section === 1) {
@@ -122,6 +134,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 }, { status: 400 });
             }
 
+            const { data: examInfo } = await admin
+                .from('exams')
+                .select('courses(passing_criteria_wpm, name, language_id, languages(name))')
+                .eq('id', id)
+                .single();
+            const course = (examInfo as { courses?: { name?: string; language_id?: string; languages?: { name?: string } | null } | null } | null)?.courses;
+            const marathi = /marathi/i.test(`${course?.languages?.name ?? ''} ${course?.name ?? ''}`);
+
             // Same passage resolution as GET /api/student/exams/[id]
             const { data: speedAss } = await admin
                 .from('exam_question_assignments')
@@ -133,18 +153,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             if (speedAss?.[0]) {
                 ({ data: passage } = await admin.from('speed_passages').select('passage_text').eq('id', speedAss[0].content_id).maybeSingle());
             }
-            if (!passage) passage = await courseFallbackContent(admin, 'speed_passages', examRow.course_id);
+            if (!passage) passage = await courseFallbackContent(admin, 'speed_passages', examRow.course_id, course?.language_id);
             if (!passage?.passage_text) {
                 return NextResponse.json({ error: 'No speed passage configured for this course. Exam NOT finalised.' }, { status: 400 });
             }
-
-            const { data: examInfo } = await admin
-                .from('exams')
-                .select('courses(passing_criteria_wpm, name, languages(name))')
-                .eq('id', id)
-                .single();
-            const course = (examInfo as { courses?: { name?: string; languages?: { name?: string } | null } | null } | null)?.courses;
-            const marathi = /marathi/i.test(`${course?.languages?.name ?? ''} ${course?.name ?? ''}`);
 
             // ponytail: time is still client-reported (clamped to the 8-min section); record a server start time if WPM forging matters.
             const timeSpent = Math.min(480, Math.max(1, Math.round(Number(rawTime) || 0)));

@@ -75,6 +75,7 @@ export default function ExamSession() {
     const [starting, setStarting] = useState(false);
     const [fsWarning, setFsWarning] = useState(false);
     const [fsViolations, setFsViolations] = useState(0);
+    const [saveError, setSaveError] = useState('');
     const examContainerRef = useRef<HTMLDivElement>(null);
     const examActiveRef = useRef(false);
     // server-clock offset (server_time − client) so scheduling can't be bypassed
@@ -186,16 +187,28 @@ export default function ExamSession() {
         apiPayload: object,
         onFinalResult?: (r: any) => void,
     ) => {
-        // 1. Save to server
+        // 1. Save to server — only advance once the server has accepted the
+        // section. (It used to advance even when the save failed, so students
+        // reached the next section with nothing recorded.)
         try {
             const res = await fetch(`/api/student/exams/${id}/submit-section`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ section: fromSection, data: apiPayload }),
             });
-            const json = await res.json();
+            const json = await res.json().catch(() => ({}));
+            if (res.status === 409) { window.location.reload(); return false; } // already saved elsewhere → resync
+            if (!res.ok) {
+                setSaveError(json.error || `Could not save Section ${fromSection}. Please try again.`);
+                return false;
+            }
+            setSaveError('');
             if (onFinalResult && json.answer) onFinalResult(json.answer);
-        } catch (e) { console.error(`Failed saving section ${fromSection}`, e); }
+        } catch (e) {
+            console.error(`Failed saving section ${fromSection}`, e);
+            setSaveError(`Network error while saving Section ${fromSection}. Check your connection and submit again.`);
+            return false;
+        }
 
         // 2. Mark completed + show transition
         setCompletedSections(prev => new Set(prev).add(fromSection));
@@ -213,19 +226,13 @@ export default function ExamSession() {
             exitFullscreen();
             setStep(4);
         }
+        return true;
     }, [id, exitFullscreen]);
 
-    const handleSection1Complete = useCallback(async (data: any) => {
-        await advanceSection(1, data);
-    }, [advanceSection]);
-
-    const handleSection2Complete = useCallback(async (data: any) => {
-        await advanceSection(2, data);
-    }, [advanceSection]);
-
-    const handleSection3Complete = useCallback(async (speedStats: any) => {
-        await advanceSection(3, speedStats, (answer) => setFinalResult(answer));
-    }, [advanceSection]);
+    const handleSection1Complete = useCallback((data: any) => advanceSection(1, data), [advanceSection]);
+    const handleSection2Complete = useCallback((data: any) => advanceSection(2, data), [advanceSection]);
+    const handleSection3Complete = useCallback(
+        (speedStats: any) => advanceSection(3, speedStats, (answer) => setFinalResult(answer)), [advanceSection]);
 
     const reEnterFullscreen = async () => {
         setFsWarning(false);
@@ -441,6 +448,12 @@ export default function ExamSession() {
             )}
 
             {/* ── Transition Screen ── */}
+            {saveError && (
+                <Alert severity="error" sx={{ mb: 2 }} onClose={() => setSaveError('')}>
+                    {saveError}
+                </Alert>
+            )}
+
             {transitioning && (
                 <SectionTransition from={transitioning.from} to={transitioning.to} />
             )}
@@ -453,6 +466,7 @@ export default function ExamSession() {
                     duration={sec1Dur}
                     onComplete={handleSection1Complete}
                     isMarathi={isMarathi}
+                    timerKey={`${id}:1`}
                 />
             )}
 
@@ -463,6 +477,7 @@ export default function ExamSession() {
                     duration={sec2Dur}
                     onComplete={handleSection2Complete}
                     isMarathi={isMarathi}
+                    timerKey={`${id}:2`}
                 />
             )}
 

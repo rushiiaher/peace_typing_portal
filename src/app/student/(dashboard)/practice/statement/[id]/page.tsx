@@ -80,7 +80,8 @@ export default function StatementPracticeSession() {
     // ─── Handlers ─────────────────────────────────────────────────────────────
 
     const handleStudentDataChange = (data: any[]) => {
-        if (sessionState === 'idle') {
+        // FortuneSheet also fires onChange on mount — only start the clock once a cell has content.
+        if (sessionState === 'idle' && /"v":(?!null|""|\{)/.test(JSON.stringify(data))) {
             setSessionState('active');
             startTimeRef.current = Date.now();
             timerRef.current = setInterval(() => {

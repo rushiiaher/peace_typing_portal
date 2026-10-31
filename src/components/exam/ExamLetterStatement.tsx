@@ -15,6 +15,7 @@ import {
 } from '@mui/icons-material';
 import FortuneSheetWrapper from './FortuneSheetWrapper';
 import { blockPasteProps } from '@/utils/blockPaste';
+import { sectionSecondsLeft } from '@/utils/sectionTimer';
 import { convertToFortuneSheetData } from '../../utils/fortuneSheetAdapter';
 
 // ── Letter reference renderer ─────────────────────────────────────────────────
@@ -250,9 +251,15 @@ function LetterEditor({ isMarathi, readOnly, editorRef }: LetterEditorProps) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ExamLetterStatement({ letter, statement, duration, onComplete, isMarathi: isMarathiProp }: any) {
+export default function ExamLetterStatement({ letter, statement, duration, onComplete, isMarathi: isMarathiProp, timerKey }: any) {
     const [statementGrid, setStatementGrid] = useState<any[]>([]);
-    const [timeLeft, setTimeLeft] = useState(duration * 60);
+    // Deadline survives a page refresh
+    const [timeLeft, setTimeLeft] = useState(() => sectionSecondsLeft(timerKey, duration * 60));
+    // Ref so the time-out submit sends the LATEST grid (it used to send the empty initial one)
+    const statementGridRef = useRef<any[]>([]);
+    useEffect(() => { statementGridRef.current = statementGrid; }, [statementGrid]);
+    const submittingRef = useRef(false);
+    const [submitting, setSubmitting] = useState(false);
     const [activeTab, setActiveTab] = useState<'letter' | 'statement'>('letter');
 
     // Letter sub-flow: idle → submitted
@@ -284,21 +291,29 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
     const onCompleteRef = useRef(onComplete);
     useEffect(() => { onCompleteRef.current = onComplete; }, [onComplete]);
 
+    const finishSection = useCallback(async () => {
+        if (submittingRef.current) return;
+        submittingRef.current = true;
+        setSubmitting(true);
+        const html = letterEditorRef.current?.innerHTML ?? '';
+        const ok = await onCompleteRef.current({ letterHtml: html, statementGrid: statementGridRef.current });
+        if (ok === false) { submittingRef.current = false; setSubmitting(false); } // save failed → allow retry
+    }, []);
+
     // Countdown timer
     useEffect(() => {
         const t = setInterval(() => {
             setTimeLeft(prev => {
                 if (prev <= 1) {
                     clearInterval(t);
-                    const html = letterEditorRef.current?.innerHTML ?? '';
-                    onCompleteRef.current({ letterHtml: html, statementGrid });
+                    finishSection();
                     return 0;
                 }
                 return prev - 1;
             });
         }, 1000);
         return () => clearInterval(t);
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [finishSection]);
 
     const pad2 = (n: number) => String(n).padStart(2, '0');
     const formatTime = (s: number) => `${pad2(Math.floor(s / 60))}:${pad2(s % 60)}`;
@@ -310,6 +325,13 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
         setActiveTab(value);
     };
 
+    // Letter length captured when the confirm dialog opens (refs can't be read during render)
+    const [letterLen, setLetterLen] = useState(0);
+    const openLetterConfirm = () => {
+        setLetterLen(letterEditorRef.current?.innerText?.trim().length ?? 0);
+        setLetterConfirmOpen(true);
+    };
+
     const submitLetter = () => {
         setLetterSubmitted(true);
         setLetterConfirmOpen(false);
@@ -318,9 +340,12 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
 
     const submitSection = () => {
         setSectionConfirmOpen(false);
-        const html = letterEditorRef.current?.innerHTML ?? '';
-        onCompleteRef.current({ letterHtml: html, statementGrid });
+        finishSection();
     };
+
+    // Statement must have at least one filled cell (when a statement is assigned) — or time is up.
+    const statementFilled = !statement || /"v":(?!null|""|\{)/.test(JSON.stringify(statementGrid));
+    const canSubmitSection = timeLeft === 0 || statementFilled;
 
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -389,17 +414,21 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
                     {/* Show "Submit Letter" CTA when on letter tab and not yet submitted */}
                     {activeTab === 'letter' && !letterSubmitted && (
                         <Button variant="contained" color="primary" endIcon={<EastOutlined />}
-                            onClick={() => setLetterConfirmOpen(true)}>
+                            onClick={openLetterConfirm}>
                             Submit Letter
                         </Button>
                     )}
 
                     {/* Show "Submit Section 2" only after letter is done and on statement tab */}
                     {letterSubmitted && (
-                        <Button variant="contained" color="success" startIcon={<CheckCircle />}
-                            onClick={() => setSectionConfirmOpen(true)}>
-                            Submit Section 2
-                        </Button>
+                        <Tooltip title={canSubmitSection ? '' : 'Fill in the statement table before submitting'}>
+                            <span>
+                                <Button variant="contained" color="success" startIcon={<CheckCircle />}
+                                    onClick={() => setSectionConfirmOpen(true)} disabled={!canSubmitSection || submitting}>
+                                    Submit Section 2
+                                </Button>
+                            </span>
+                        </Tooltip>
                     )}
                 </Stack>
             </Paper>
@@ -442,7 +471,7 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
                             {!letterSubmitted && (
                                 <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
                                     <Button variant="contained" color="primary" endIcon={<EastOutlined />}
-                                        onClick={() => setLetterConfirmOpen(true)}>
+                                        onClick={openLetterConfirm}>
                                         Submit Letter &amp; Unlock Statement
                                     </Button>
                                 </Box>
@@ -523,18 +552,19 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
                     </Typography>
                     <Box sx={{ mt: 1.5, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
                         <Typography variant="body2">
-                            Characters typed: <strong>{letterEditorRef.current?.innerText?.length ?? 0}</strong>
+                            Characters typed: <strong>{letterLen}</strong>
                         </Typography>
                     </Box>
-                    {(letterEditorRef.current?.innerText?.length ?? 0) < 10 && (
-                        <Alert severity="warning" sx={{ mt: 1.5 }}>
-                            Your letter appears to be very short. Are you sure you want to submit?
+                    {letterLen < 10 && (
+                        <Alert severity="error" sx={{ mt: 1.5 }}>
+                            Your letter is empty or too short. Type the letter before submitting.
                         </Alert>
                     )}
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setLetterConfirmOpen(false)}>Keep Editing</Button>
-                    <Button variant="contained" color="primary" endIcon={<EastOutlined />} onClick={submitLetter}>
+                    <Button variant="contained" color="primary" endIcon={<EastOutlined />} onClick={submitLetter}
+                        disabled={letterLen < 10}>
                         Confirm &amp; Unlock Statement
                     </Button>
                 </DialogActions>
@@ -552,7 +582,7 @@ export default function ExamLetterStatement({ letter, statement, duration, onCom
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setSectionConfirmOpen(false)}>Cancel</Button>
-                    <Button variant="contained" color="success" onClick={submitSection}>
+                    <Button variant="contained" color="success" onClick={submitSection} disabled={!canSubmitSection || submitting}>
                         Confirm &amp; Continue to Section 3
                     </Button>
                 </DialogActions>

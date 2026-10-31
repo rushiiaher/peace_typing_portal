@@ -229,6 +229,23 @@ export async function POST(req: NextRequest) {
         const pattern = { ...FIXED_PATTERN, ...safePatternData } as any;
         const totalDuration = pattern.duration_minutes as number;
 
+        // 3b. Scored content must exist — exams used to be created with empty
+        // MCQ / speed sections when the course's question bank was empty.
+        const countActive = async (table: string) => {
+            const { count } = await admin.from(table).select('id', { count: 'exact', head: true })
+                .eq('course_id', courseId).eq('is_active', true);
+            return count ?? 0;
+        };
+        const [mcqAvail, speedAvail] = await Promise.all([countActive('mcq_question_bank'), countActive('speed_passages')]);
+        const short: string[] = [];
+        if (mcqAvail < pattern.mcq_count) short.push(`${pattern.mcq_count} MCQs needed, ${mcqAvail} available`);
+        if (speedAvail < 1) short.push('no speed passage');
+        if (short.length) {
+            return NextResponse.json({
+                error: `This course's question bank is incomplete (${short.join('; ')}). Ask the super admin to upload content before scheduling.`,
+            }, { status: 400 });
+        }
+
         // 4. Operational hours (stored as HH:mm:ss strings in IST)
         const openTime = institute.opening_time || '09:00:00';
         const closeTime = institute.closing_time || '18:00:00';

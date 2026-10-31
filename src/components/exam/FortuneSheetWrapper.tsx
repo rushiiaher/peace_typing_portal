@@ -72,11 +72,9 @@ function FortuneSheetWrapper({
         enableAddBackTop: false,
         column: 26,
         row: 60,
-        hook: {
-            updated: (updatedData: any) => {
-                if (onChange && !readOnly) onChange(updatedData);
-            },
-        },
+        // Workbook's change callback is `onChange` — the old `hook.updated` is not
+        // a FortuneSheet API, so student statement grids were never captured.
+        onChange: readOnly ? undefined : onChange,
     };
 
     return (

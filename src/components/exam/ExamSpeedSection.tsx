@@ -50,11 +50,24 @@ export default function ExamSpeedSection({ passage, courseWpm, onComplete, isMar
         return () => { if (timerRef.current) clearInterval(timerRef.current); };
     }, [status]);
 
-    const handleSubmit = () => {
+    const [submitting, setSubmitting] = useState(false);
+    const handleSubmit = async () => {
+        if (submitting) return;
         if (timerRef.current) clearInterval(timerRef.current);
         setStatus('finished');
-        onComplete(computeStats());
+        setSubmitting(true);
+        const ok = await onComplete(computeStats());
+        if (ok === false) setSubmitting(false); // save failed → button re-enabled for retry
     };
+
+    // Time up → submit automatically (students used to be left on a dead screen)
+    const autoSubmitted = useRef(false);
+    useEffect(() => {
+        if (timeLeft === 0 && status === 'finished' && !autoSubmitted.current) {
+            autoSubmitted.current = true;
+            handleSubmit();
+        }
+    }); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleTyping = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         if (status === 'finished') return;
@@ -144,7 +157,7 @@ export default function ExamSpeedSection({ passage, courseWpm, onComplete, isMar
 
                     {status !== 'idle' && (
                         <Button variant="contained" color="success" size="large" startIcon={<CheckCircle />}
-                            onClick={handleSubmit}>
+                            onClick={handleSubmit} disabled={submitting}>
                             {status === 'finished' ? 'Submit Exam' : 'Submit Speed Passage'}
                         </Button>
                     )}
