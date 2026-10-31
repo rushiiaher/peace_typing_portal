@@ -55,6 +55,19 @@ function parseSheetAsGrid(sheet: XLSX.WorkSheet): {
     return { data, merges, styles };
 }
 
+/**
+ * Read an upload as a workbook. CSV bytes are decoded explicitly: SheetJS
+ * otherwise blanks Windows-1252 cells (Excel's default "CSV" — and Kruti Dev
+ * text lives in that range) and mangles UTF-8 without a BOM.
+ */
+function readWorkbook(buffer: Buffer, fileName: string, opts: XLSX.ParsingOptions = {}): XLSX.WorkBook {
+    if (!/\.csv$/i.test(fileName)) return XLSX.read(buffer, { ...opts, type: 'buffer' });
+    let text: string;
+    try { text = new TextDecoder('utf-8', { fatal: true }).decode(buffer); } // strips BOM
+    catch { text = new TextDecoder('windows-1252').decode(buffer); }
+    return XLSX.read(text, { ...opts, type: 'string' });
+}
+
 // "Option A", "option_a", " OPTION-A " → "optiona"
 const normHeader = (h: unknown) => String(h ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const normQuestion = (q: string) => q.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -76,8 +89,8 @@ function parseCorrectAnswer(raw: string, options: Record<string, string>): strin
     return byText ? byText[0] : null;
 }
 
-async function importMcq(buffer: Buffer, courseId: string) {
-    const workbook = XLSX.read(buffer, { type: 'buffer', cellText: true, cellFormula: false });
+async function importMcq(buffer: Buffer, courseId: string, fileName: string) {
+    const workbook = readWorkbook(buffer, fileName, { cellText: true, cellFormula: false });
     const grid = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], {
         header: 1, raw: false, defval: '', blankrows: false,
     }) as string[][];
@@ -174,14 +187,13 @@ export async function POST(req: NextRequest) {
 
         const buffer = Buffer.from(await file.arrayBuffer());
 
-        if (type === 'mcq_question_bank') return await importMcq(buffer, courseId);
+        if (type === 'mcq_question_bank') return await importMcq(buffer, courseId, file.name);
 
         // ── Statement Templates: whole-sheet grid upload ──────────────────────
         // The admin uploads a normal Excel file that IS the statement.
         // We parse the entire sheet as a grid — no manual JSON needed.
         if (type === 'statement_templates') {
-            const workbook = XLSX.read(buffer, {
-                type: 'buffer',
+            const workbook = readWorkbook(buffer, file.name, {
                 cellStyles: true,   // needed to extract bold/align
                 cellFormula: false,
             });
@@ -220,7 +232,7 @@ export async function POST(req: NextRequest) {
         }
 
         // ── All other types: row-by-row header-based parsing ─────────────────
-        const workbook = XLSX.read(buffer, { type: 'buffer', cellText: true, cellFormula: false });
+        const workbook = readWorkbook(buffer, file.name, { cellText: true, cellFormula: false });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const rows: Record<string, any>[] = XLSX.utils.sheet_to_json(sheet, {
             raw: false,

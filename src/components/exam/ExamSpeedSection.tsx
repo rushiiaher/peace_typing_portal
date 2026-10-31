@@ -5,9 +5,8 @@ import { Box, Typography, Button, Paper, Stack, Chip, Grid } from '@mui/material
 import { Timer, Speed, CheckCircle } from '@mui/icons-material';
 import { computeWordStats, getWordStates, WORD_STATE_STYLE } from '../../utils/typingStats';
 
-export default function ExamSpeedSection({ passage, courseWpm, onComplete }: any) {
-    const isMarathi = passage?.course_name?.toLowerCase().includes('marathi') ||
-        passage?.title?.toLowerCase().includes('marathi');
+export default function ExamSpeedSection({ passage, courseWpm, onComplete, isMarathi: isMarathiProp }: any) {
+    const isMarathi = !!isMarathiProp || passage?.title?.toLowerCase().includes('marathi');
 
     // Required speed still comes from the course (else 30 WPM)
     const wpm = courseWpm || passage?.passing_wpm || 30;
@@ -27,13 +26,14 @@ export default function ExamSpeedSection({ passage, courseWpm, onComplete }: any
     const computeStats = useCallback(() => {
         // Word-based scoring: a wrong/skipped word costs 1 mistake — a single
         // character slip no longer misaligns the rest of the passage.
-        const { typedWordCount, mistakes, accuracy } = computeWordStats(typedText, passageText, { final: true });
+        const { typedWordCount, mistakes, accuracy } = computeWordStats(typedText, passageText, { final: true, marathi: isMarathi });
         const timeSpent = initialDuration - timeLeft || 1;
         const mins = timeSpent / 60;
         const actualWpm = Math.round(typedWordCount / mins);
         const passed = actualWpm >= wpm && accuracy >= 80;
-        return { wpm: actualWpm, accuracy, mistakes, timeSpent, passed };
-    }, [typedText, timeLeft, passageText, initialDuration, wpm]);
+        // typedText goes to the server, which recomputes the score (client stats are display-only)
+        return { wpm: actualWpm, accuracy, mistakes, timeSpent, passed, typedText };
+    }, [typedText, timeLeft, passageText, initialDuration, wpm, isMarathi]);
 
     useEffect(() => {
         if (status !== 'active') return;
@@ -64,7 +64,7 @@ export default function ExamSpeedSection({ passage, courseWpm, onComplete }: any
             startTimeRef.current = Date.now();
         }
         setTypedText(val);
-        if (val.length >= passageText.length) {
+        if (passageText && val.length >= passageText.length) {
             clearInterval(timerRef.current!);
             setStatus('finished');
         }
@@ -74,13 +74,13 @@ export default function ExamSpeedSection({ passage, courseWpm, onComplete }: any
     const formatTime = (s: number) => `${pad2(Math.floor(s / 60))}:${pad2(s % 60)}`;
 
     const secsUsed = initialDuration - timeLeft;
-    const liveStats = computeWordStats(typedText, passageText);
+    const liveStats = computeWordStats(typedText, passageText, { marathi: isMarathi });
     const liveWpm = secsUsed > 0 ? Math.round(liveStats.typedWordCount / (secsUsed / 60)) : 0;
     const liveMistakes = liveStats.mistakes;
     const liveAcc = liveStats.accuracy;
 
     // Build word-level overlay: whole words coloured by correctness
-    const wordStates = getWordStates(typedText, passageText);
+    const wordStates = getWordStates(typedText, passageText, { marathi: isMarathi });
     let overlayWordIdx = -1;
     const overlaySpans = passageText.split(/(\s+)/).map((tok, i) => {
         if (tok === '') return null;

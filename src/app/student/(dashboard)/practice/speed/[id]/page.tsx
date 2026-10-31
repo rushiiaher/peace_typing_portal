@@ -27,6 +27,7 @@ export default function SpeedPracticeSession() {
 
     const [passage, setPassage] = useState<Passage | null>(null);
     const [isMarathi, setIsMarathi] = useState(false);
+    const isMarathiRef = useRef(false); // read inside memoised finishSession
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
@@ -57,6 +58,7 @@ export default function SpeedPracticeSession() {
                 if (!found) throw new Error('Passage not found.');
                 setPassage(found);
                 setIsMarathi(!!json.is_marathi);
+                isMarathiRef.current = !!json.is_marathi;
             } catch (e: any) { setError(e.message); }
             finally { setLoading(false); }
         }
@@ -65,7 +67,7 @@ export default function SpeedPracticeSession() {
 
     const computeStats = useCallback((typed: string, passageText: string, secsSpent: number) => {
         // Word-based scoring — one wrong word = one mistake (no char cascade)
-        const { typedWordCount, mistakes, accuracy } = computeWordStats(typed, passageText, { final: true });
+        const { typedWordCount, mistakes, accuracy } = computeWordStats(typed, passageText, { final: true, marathi: isMarathiRef.current });
         const mins = secsSpent / 60 || 0.001;
         const wpm = Math.round(typedWordCount / mins);
         return { wpm, accuracy, mistakes };
@@ -174,14 +176,14 @@ export default function SpeedPracticeSession() {
 
     const timeStr = `${pad2(Math.floor(timeLeft / 60))}:${pad2(timeLeft % 60)}`;
     const secsSpent = DURATION - timeLeft;
-    const liveStats = computeWordStats(typedText, passage.passage_text);
+    const liveStats = computeWordStats(typedText, passage.passage_text, { marathi: isMarathi });
     const wordsCount = liveStats.typedWordCount;
     const liveWpm = secsSpent > 0 ? Math.round(wordsCount / (secsSpent / 60)) : 0;
     const liveMistakes = liveStats.mistakes;
     const liveAcc = liveStats.accuracy;
 
     // Word-level overlay chunks: whole words coloured by correctness
-    const wordStates = getWordStates(typedText, passage.passage_text);
+    const wordStates = getWordStates(typedText, passage.passage_text, { marathi: isMarathi });
     let wIdx = -1;
     const overlayChunks = passage.passage_text.split(/(\s+)/).filter(t => t !== '').map(tok => {
         if (/^\s+$/.test(tok)) return { state: 'pending' as const, text: tok, ws: true };

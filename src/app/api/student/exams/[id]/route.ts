@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { courseFallbackContent } from '@/utils/examContent';
 import { examGate, isExamExpired, EXPIRED_MESSAGE } from '@/utils/examWindow';
 
 function getAdmin() {
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             .select(`
                 *,
                 exam_patterns (*),
-                courses (*)
+                courses (*, languages (name))
             `)
             .eq('id', id)
             .eq('student_id', user.id)
@@ -78,19 +79,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             }
         }
 
-        // Fallback for writing sections whose assigned content_id is orphaned
-        // (e.g. statement_templates was empty when exams were scheduled).
-        // Pull an active template for the exam's course, else any active one.
-        async function fallbackTemplate(tableName: string) {
-            let q = admin.from(tableName).select('*').eq('is_active', true);
-            const { data: byCourse } = await q.eq('course_id', exam.course_id).limit(1);
-            if (byCourse && byCourse.length) return byCourse[0];
-            const { data: any1 } = await admin.from(tableName).select('*').eq('is_active', true).limit(1);
-            return any1 && any1.length ? any1[0] : null;
+        // Fallback for sections whose assigned content_id is orphaned
+        // (e.g. content deleted, or table empty when exams were scheduled).
+        for (const [key, table] of [['statement', 'statement_templates'], ['letter', 'letter_templates'],
+            ['email', 'email_templates'], ['speed', 'speed_passages']] as const) {
+            if (!fullContent[key]) fullContent[key] = await courseFallbackContent(admin, table, exam.course_id);
         }
-        if (!fullContent.statement) fullContent.statement = await fallbackTemplate('statement_templates');
-        if (!fullContent.letter) fullContent.letter = await fallbackTemplate('letter_templates');
-        if (!fullContent.email) fullContent.email = await fallbackTemplate('email_templates');
 
         // 4. Fetch exam_answers to determine resume section
         const { data: examAnswers } = await admin

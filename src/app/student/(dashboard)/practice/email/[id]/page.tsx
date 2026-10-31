@@ -11,6 +11,7 @@ import {
     ErrorOutline, Timer, ArrowForward, AttachFile,
 } from '@mui/icons-material';
 import { blockPasteProps } from '@/utils/blockPaste';
+import { computeWordStats } from '@/utils/typingStats';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,32 +29,11 @@ interface Template {
 
 function pad2(n: number) { return String(n).padStart(2, '0'); }
 
-/** Compare two strings character by character, return { correct, total } */
-function compareStrings(typed: string, expected: string) {
-    let correct = 0;
-    const total = Math.max(typed.length, expected.length);
-    for (let i = 0; i < Math.min(typed.length, expected.length); i++) {
-        if (typed[i] === expected[i]) correct++;
-    }
-    return { correct, total };
-}
-
-/** Per-character coloring for reference-side fields */
-function charHighlight(typed: string, expected: string): React.ReactNode[] {
-    return expected.split('').map((ch, i) => {
-        const t = typed[i];
-        let color = '#374151'; // pending
-        let bg = 'transparent';
-        if (t !== undefined) {
-            color = t === ch ? '#15803d' : '#dc2626';
-            bg = t === ch ? 'transparent' : '#fee2e2';
-        }
-        return (
-            <span key={i} style={{ color, background: bg, borderRadius: 2 }}>
-                {ch === ' ' && t !== undefined && t !== ch ? '·' : ch}
-            </span>
-        );
-    });
+/** Word-aligned compare (shared scorer). Untyped expected words count as missing. */
+function compareStrings(typed: string, expected: string, marathi: boolean) {
+    const { correctWords, mistakes } = computeWordStats(typed, expected, { final: true, marathi });
+    const expectedWords = expected.trim().split(/\s+/).filter(Boolean).length;
+    return { correct: correctWords, total: Math.max(expectedWords, correctWords + mistakes) };
 }
 
 // ─── Email Panel component ─────────────────────────────────────────────────────
@@ -329,8 +309,8 @@ export default function EmailPracticeSession() {
         const fieldBreakdown = fieldDefs.map(f => {
             const expected = (parts[f.key] ?? '').trim();
             const typed = (values[f.key] ?? '').trim();
-            const { correct, total } = compareStrings(typed, expected);
-            const mistakes = Math.max(0, typed.length - correct) + Math.max(0, expected.length - typed.length);
+            const { correct, total } = compareStrings(typed, expected, isMarathi);
+            const mistakes = total - correct;
             totalCorrect += correct; totalChars += total; totalMistakes += mistakes;
             const pct = total > 0 ? Math.round((correct / total) * 100) : 100;
             return { field: f.label, correct, total, pct };
@@ -353,7 +333,7 @@ export default function EmailPracticeSession() {
                 }),
             });
         } catch { } finally { setSaving(false); setSessionState('finished'); }
-    }, [sessionState, parts, values, id, stopTimer]);
+    }, [sessionState, parts, values, id, stopTimer, isMarathi]);
 
     // ─── Reset ────────────────────────────────────────────────────────────────
 

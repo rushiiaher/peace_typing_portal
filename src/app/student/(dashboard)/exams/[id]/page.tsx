@@ -250,7 +250,8 @@ export default function ExamSession() {
     // Exam pass floor is 20 WPM (matches submit-section EXAM_PASS_WPM),
     // regardless of the course's named criteria.
     const passWpm = 20;
-    const isMarathi = course?.language_name?.toLowerCase().includes('marathi') ?? false;
+    // courses has language_id, not language_name — the API joins languages(name)
+    const isMarathi = /marathi/i.test(`${course?.languages?.name ?? ''} ${course?.name ?? ''}`);
     const sec1Dur = pattern?.section_1_duration || 25;
     const sec2Dur = pattern?.section_2_duration || 25;
 
@@ -451,6 +452,7 @@ export default function ExamSession() {
                     email={content?.email}
                     duration={sec1Dur}
                     onComplete={handleSection1Complete}
+                    isMarathi={isMarathi}
                 />
             )}
 
@@ -469,6 +471,7 @@ export default function ExamSession() {
                     passage={content?.speed}
                     courseWpm={passWpm}
                     onComplete={handleSection3Complete}
+                    isMarathi={isMarathi}
                 />
             )}
 

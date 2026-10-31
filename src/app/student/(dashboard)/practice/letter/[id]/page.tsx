@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Box, Typography, CircularProgress, Alert, Button, IconButton, Divider } from '@mui/material';
 import { ArrowBack, Replay, CheckCircle } from '@mui/icons-material';
 import { Editor } from '@tinymce/tinymce-react';
+import { computeWordStats } from '@/utils/typingStats';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -204,30 +205,14 @@ export default function LetterPracticeSession() {
         if (timerRef.current) clearInterval(timerRef.current);
         setSessionState('finished');
 
-        // Helper to normalize text for comparison
-        const normalize = (t: string) => t.replace(/\s+/g, ' ').trim();
-
+        // Word-aligned scoring (shared with speed): one slip costs one word,
+        // and Kruti Dev / Unicode Marathi compare equal.
         const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = currentContent;
-        const typedPlain = normalize(tempDiv.innerText || tempDiv.textContent || '');
-        const expectedPlain = normalize(expectedText);
-
-        let mistakes = 0;
-        const typedLen = typedPlain.length;
-        const compareLen = Math.min(typedLen, expectedPlain.length);
-
-        for (let i = 0; i < compareLen; i++) {
-            if (typedPlain[i] !== expectedPlain[i]) mistakes++;
-        }
-
-        // Calculate WPM based on actual content typed
-        const words = typedPlain.split(' ').filter(Boolean).length;
-        const wpm = Math.round(words / (secs / 60 || 0.001));
-
-        // Accuracy = (Correct / Total Typed)
-        const accuracy = typedLen > 0
-            ? Math.max(0, Math.round(((typedLen - mistakes) / typedLen) * 100))
-            : 100;
+        // Detached nodes have no layout, so innerText loses paragraph breaks — add a space after block ends.
+        tempDiv.innerHTML = currentContent.replace(/<\/(p|div|li|h[1-6])>|<br\s*\/?>/gi, '$& ');
+        const typedPlain = tempDiv.textContent || '';
+        const { typedWordCount, mistakes, accuracy } = computeWordStats(typedPlain, expectedText, { final: true, marathi: isMarathi });
+        const wpm = Math.round(typedWordCount / (secs / 60 || 0.001));
 
         setFinalWpm(wpm);
         setFinalAccuracy(accuracy);
@@ -241,7 +226,7 @@ export default function LetterPracticeSession() {
                 body: JSON.stringify({ template_id: id, wpm, accuracy, mistakes, duration_seconds: secs }),
             });
         } catch { } finally { setSaving(false); }
-    }, [id, expectedText]);
+    }, [id, expectedText, isMarathi]);
 
     // ── Editor change handler ──────────────────────────────────────────────────
 

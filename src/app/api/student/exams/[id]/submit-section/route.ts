@@ -2,6 +2,8 @@ import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { isExamExpired, EXPIRED_MESSAGE } from '@/utils/examWindow';
+import { courseFallbackContent } from '@/utils/examContent';
+import { computeWordStats } from '@/utils/typingStats';
 
 function getAdmin() {
     return createAdminClient(
@@ -27,12 +29,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // scheduled day. Without this, submitting bypassed every start check.
         const { data: examRow } = await admin
             .from('exams')
-            .select('id, exam_date, start_time, end_time, status')
+            .select('id, exam_date, start_time, end_time, status, course_id')
             .eq('id', id)
             .eq('student_id', user.id)
             .single();
 
         if (!examRow) return NextResponse.json({ error: 'Exam not found' }, { status: 404 });
+        // Finalised exams can't be re-submitted (would overwrite the result).
+        if (examRow.status === 'completed') {
+            return NextResponse.json({ error: 'Exam already submitted.' }, { status: 409 });
+        }
         if (isExamExpired(examRow)) {
             return NextResponse.json({ error: EXPIRED_MESSAGE }, { status: 403 });
         }
@@ -104,22 +110,46 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
         } else if (section === 3) {
             // Speed Passage - Final Submission
-            const { wpm, accuracy, mistakes, timeSpent } = data ?? {};
+            // Score is recomputed HERE from the typed text — client-sent
+            // wpm/accuracy are ignored (they were trivially forgeable).
+            const { typedText, timeSpent: rawTime } = data ?? {};
 
-            // Guard: refuse to finalise the exam without real speed stats.
+            // Guard: refuse to finalise the exam without the typed text.
             // (Prevents silently failing students when the payload is malformed.)
-            if (typeof wpm !== 'number' || typeof accuracy !== 'number') {
+            if (typeof typedText !== 'string' || typedText.length > 50000) {
                 return NextResponse.json({
-                    error: 'Speed section stats missing (wpm/accuracy). Exam NOT finalised — please submit again.'
+                    error: 'Speed section text missing. Exam NOT finalised — please submit again.'
                 }, { status: 400 });
             }
 
-            // Get course passing criteria
+            // Same passage resolution as GET /api/student/exams/[id]
+            const { data: speedAss } = await admin
+                .from('exam_question_assignments')
+                .select('content_id')
+                .eq('exam_id', id)
+                .eq('question_type', 'speed')
+                .limit(1);
+            let passage: { passage_text?: string } | null = null;
+            if (speedAss?.[0]) {
+                ({ data: passage } = await admin.from('speed_passages').select('passage_text').eq('id', speedAss[0].content_id).maybeSingle());
+            }
+            if (!passage) passage = await courseFallbackContent(admin, 'speed_passages', examRow.course_id);
+            if (!passage?.passage_text) {
+                return NextResponse.json({ error: 'No speed passage configured for this course. Exam NOT finalised.' }, { status: 400 });
+            }
+
             const { data: examInfo } = await admin
                 .from('exams')
-                .select('courses(passing_criteria_wpm)')
+                .select('courses(passing_criteria_wpm, name, languages(name))')
                 .eq('id', id)
                 .single();
+            const course = (examInfo as { courses?: { name?: string; languages?: { name?: string } | null } | null } | null)?.courses;
+            const marathi = /marathi/i.test(`${course?.languages?.name ?? ''} ${course?.name ?? ''}`);
+
+            // ponytail: time is still client-reported (clamped to the 8-min section); record a server start time if WPM forging matters.
+            const timeSpent = Math.min(480, Math.max(1, Math.round(Number(rawTime) || 0)));
+            const { typedWordCount, accuracy, mistakes } = computeWordStats(typedText, passage.passage_text, { final: true, marathi });
+            const wpm = Math.round(typedWordCount / (timeSpent / 60));
 
             // Pass floor lowered to 20 WPM (business decision: students were
             // not reaching the 30 WPM course criteria). The student's actual

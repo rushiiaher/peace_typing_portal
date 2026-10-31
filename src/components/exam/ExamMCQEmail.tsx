@@ -50,7 +50,7 @@ function getStatus(
     return 'notVisited';
 }
 
-export default function ExamMCQEmail({ mcqs, email, duration, onComplete }: any) {
+export default function ExamMCQEmail({ mcqs, email, duration, onComplete, isMarathi: isMarathiProp }: any) {
     const [timeLeft, setTimeLeft] = useState(duration * 60);
     const [activeTab, setActiveTab] = useState<'mcq' | 'email'>('mcq');
     const [currentMcqIndex, setCurrentMcqIndex] = useState(0);
@@ -115,7 +115,7 @@ export default function ExamMCQEmail({ mcqs, email, duration, onComplete }: any)
         setEmailValues(prev => ({ ...prev, [field]: val }));
     };
 
-    const isMarathi = email?.course_name?.toLowerCase().includes('marathi') || email?.title?.toLowerCase().includes('marathi');
+    const isMarathi = !!isMarathiProp || email?.title?.toLowerCase().includes('marathi');
     const isLastQuestion = mcqs && currentMcqIndex === mcqs.length - 1;
     const answeredCount = Object.keys(answers).length;
     const mcqAllDone = !!mcqs && answeredCount === mcqs.length;
