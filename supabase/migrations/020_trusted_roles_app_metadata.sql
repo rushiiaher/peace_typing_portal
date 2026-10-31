@@ -10,7 +10,8 @@
 --   1. Run STEP 1 (review) and note the real super admin email(s).
 --   2. Put those emails into STEP 3 and run STEPS 2-5 together.
 --   3. Run STEP 6 (verify) — every row must show a role, no NULLs for real users.
---   4. Only then merge branch fix/role-from-app-metadata (app reads app_metadata).
+--   4. App already reads app_metadata (deployed 2026-10-31) and self-heals students /
+--      institute admins from their tables at login; STEP 2 (trigger) is the critical part.
 
 -- ── STEP 1: review — who currently claims super_admin? ─────────────────────
 -- Legit super admins were created by scripts/create-superadmin.ts or by hand.
@@ -48,7 +49,7 @@ WHERE EXISTS (SELECT 1 FROM public.institute_admins a WHERE a.id = u.id);
 -- EDIT THIS LIST with the real super admin email(s) from STEP 1.
 UPDATE auth.users u SET raw_app_meta_data = COALESCE(u.raw_app_meta_data, '{}'::jsonb) || '{"role":"super_admin"}'
 WHERE lower(u.email) IN (
-    'replace-with-real-superadmin@example.com'
+    'admin@typingportal.com'
 );
 
 DO $$

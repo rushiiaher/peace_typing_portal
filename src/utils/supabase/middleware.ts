@@ -35,7 +35,9 @@ export async function updateSession(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
 
     // ── Role-based access control ────────────────────────────────────────────
-    const decision = checkAccess(request.nextUrl.pathname, user?.user_metadata?.role)
+    // Role comes from app_metadata (service-role writable only). user_metadata
+    // is editable by the user themself, so it must never grant access.
+    const decision = checkAccess(request.nextUrl.pathname, user?.app_metadata?.role)
 
     if (decision.action === 'unauthorized') {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

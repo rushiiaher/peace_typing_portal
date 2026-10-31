@@ -10,10 +10,6 @@ export async function POST() {
             return NextResponse.json({ allowed: false, reason: 'unauthorized' }, { status: 401 });
         }
 
-        if (user.user_metadata?.role !== 'student') {
-            return NextResponse.json({ allowed: false, reason: 'not_student' });
-        }
-
         const admin = createAdminClient(
             process.env.NEXT_PUBLIC_SUPABASE_URL!,
             process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -26,12 +22,20 @@ export async function POST() {
             .eq('id', user.id)
             .single();
 
+        // students table is the source of truth (not the user-editable user_metadata)
         if (!studentRow) {
             return NextResponse.json({ allowed: false, reason: 'not_found' });
         }
 
         if (!studentRow.is_active) {
             return NextResponse.json({ allowed: false, reason: 'inactive' });
+        }
+
+        // Self-heal: set the trusted role (app_metadata) the middleware checks
+        if (user.app_metadata?.role !== 'student') {
+            await admin.auth.admin.updateUserById(user.id, {
+                app_metadata: { ...user.app_metadata, role: 'student' },
+            });
         }
 
         return NextResponse.json({ allowed: true });

@@ -10,12 +10,8 @@ export async function POST() {
             return NextResponse.json({ allowed: false, reason: 'Unauthorized' }, { status: 401 });
         }
 
-        // Primary check: user_metadata.role
-        if (user.user_metadata?.role === 'institute_admin') {
-            return NextResponse.json({ allowed: true });
-        }
-
-        // Fallback: check institute_admins table (catches accounts created before metadata was set)
+        // The institute_admins table is the source of truth (checked every login,
+        // so deactivated admins are refused even if their role is set).
         const admin = createAdminClient(
             process.env.NEXT_PUBLIC_SUPABASE_URL!,
             process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -36,12 +32,12 @@ export async function POST() {
             return NextResponse.json({ allowed: false, reason: 'account_inactive' });
         }
 
-        // Self-heal: patch user_metadata so future logins pass the primary check
-        const existingMeta = user.user_metadata ?? {};
-        await admin.auth.admin.updateUserById(user.id, {
-            user_metadata: { ...existingMeta, role: 'institute_admin' },
-            app_metadata: { role: 'institute_admin' },
-        });
+        // Self-heal: set the trusted role (app_metadata) the middleware checks
+        if (user.app_metadata?.role !== 'institute_admin') {
+            await admin.auth.admin.updateUserById(user.id, {
+                app_metadata: { ...user.app_metadata, role: 'institute_admin' },
+            });
+        }
 
         return NextResponse.json({ allowed: true });
     } catch (err: any) {

@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const role = user.user_metadata?.role;
+    const role = user.app_metadata?.role;
     if (!['institute_admin', 'student'].includes(role)) {
         return NextResponse.json({ error: 'Only institute admins and students can raise tickets.' }, { status: 403 });
     }
